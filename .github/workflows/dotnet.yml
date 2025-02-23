@@ -1,0 +1,41 @@
+name: .NET Build and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 8.0.x
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: ./USStockDownloader
+      
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+      working-directory: ./USStockDownloader
+      
+    - name: Test
+      run: dotnet test --no-build --verbosity normal --configuration Release
+      working-directory: ./USStockDownloader
+      
+    - name: Publish
+      run: dotnet publish --configuration Release --output ./publish
+      working-directory: ./USStockDownloader
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: USStockDownloader
+        path: ./USStockDownloader/publish/
