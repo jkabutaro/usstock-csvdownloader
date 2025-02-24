@@ -9,15 +9,13 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        var serviceCollection = new ServiceCollection();
-        ConfigureServices(serviceCollection);
+        var serviceProvider = ConfigureServices();
 
-        var serviceProvider = serviceCollection.BuildServiceProvider();
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
 
         try
         {
-            await Parser.Default.ParseArguments<DownloadOptions>(args)
+            await Parser.Default.ParseArguments<Options>(args)
                 .WithParsedAsync(async options => await RunAsync(options, serviceProvider, logger));
         }
         catch (Exception ex)
@@ -27,8 +25,10 @@ class Program
         }
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    private static IServiceProvider ConfigureServices()
     {
+        var services = new ServiceCollection();
+
         services.AddLogging(builder =>
         {
             builder.AddConsole();
@@ -36,21 +36,22 @@ class Program
         });
 
         services.AddHttpClient<IStockDataService, StockDataService>();
+        services.AddSingleton<SymbolListProvider>();
+        services.AddSingleton<StockDownloadManager>();
+
+        return services.BuildServiceProvider();
     }
 
-    private static async Task RunAsync(DownloadOptions options, ServiceProvider serviceProvider, ILogger<Program> logger)
+    private static async Task RunAsync(Options options, IServiceProvider services, ILogger<Program> logger)
     {
+        var symbolProvider = services.GetRequiredService<SymbolListProvider>();
+        var downloadManager = services.GetRequiredService<StockDownloadManager>();
+
         try
         {
-            var outputPath = Path.Combine(Environment.CurrentDirectory, "output");
-            var downloadManager = ActivatorUtilities.CreateInstance<StockDownloadManager>(
-                serviceProvider,
-                outputPath,
-                options.MaxConcurrentDownloads,
-                new RetryOptions(options.MaxRetries, options.RetryDelay, options.ExponentialBackoff));
-
-            var symbols = await File.ReadAllLinesAsync(options.SymbolFile);
-            await downloadManager.DownloadStockDataAsync(symbols.Where(s => !string.IsNullOrWhiteSpace(s)).ToList());
+            var symbolFile = options.SymbolFile ?? "sp500"; // デフォルトはS&P500
+            var symbols = symbolProvider.GetSymbols(symbolFile);
+            await downloadManager.DownloadStockDataAsync(symbols, options);
 
             logger.LogInformation("Download completed successfully");
         }
@@ -60,4 +61,22 @@ class Program
             throw;
         }
     }
+}
+
+public class Options
+{
+    [Option('f', "file", Required = false, HelpText = "Path to the symbol file, or use 'sp500' for S&P 500 symbols, 'nyd' for NY Dow symbols")]
+    public string? SymbolFile { get; set; }
+
+    [Option('m', "max-concurrent-downloads", Required = false, HelpText = "Maximum number of concurrent downloads")]
+    public int MaxConcurrentDownloads { get; set; }
+
+    [Option('r', "max-retries", Required = false, HelpText = "Maximum number of retries")]
+    public int MaxRetries { get; set; }
+
+    [Option('d', "retry-delay", Required = false, HelpText = "Retry delay in milliseconds")]
+    public int RetryDelay { get; set; }
+
+    [Option('e', "exponential-backoff", Required = false, HelpText = "Use exponential backoff for retries")]
+    public bool ExponentialBackoff { get; set; }
 }
