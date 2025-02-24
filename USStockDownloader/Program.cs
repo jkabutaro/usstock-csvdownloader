@@ -11,16 +11,35 @@ class Program
     {
         var serviceProvider = ConfigureServices();
 
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-
         try
         {
             await Parser.Default.ParseArguments<Options>(args)
-                .WithParsedAsync(async options => await RunAsync(options, serviceProvider, logger));
+                .WithParsedAsync(async options => await RunAsync(options, serviceProvider));
         }
         catch (Exception ex)
         {
+            var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
             logger.LogError(ex, "An error occurred while running the application");
+            Environment.Exit(1);
+        }
+    }
+
+    private static async Task RunAsync(Options options, IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        var symbolProvider = services.GetRequiredService<SymbolListProvider>();
+        var downloadManager = services.GetRequiredService<StockDownloadManager>();
+
+        try
+        {
+            var symbolFile = options.SymbolFile ?? "sp500"; // デフォルトはS&P500
+            var symbols = await symbolProvider.GetSymbols(symbolFile);
+            await downloadManager.DownloadStockDataAsync(symbols, options);
+            logger.LogInformation("Download completed successfully");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An error occurred while downloading stock data");
             Environment.Exit(1);
         }
     }
@@ -35,31 +54,12 @@ class Program
             builder.SetMinimumLevel(LogLevel.Information);
         });
 
-        services.AddHttpClient<IStockDataService, StockDataService>();
+        services.AddHttpClient();
+        services.AddSingleton<IndexSymbolService>();
         services.AddSingleton<SymbolListProvider>();
         services.AddSingleton<StockDownloadManager>();
 
         return services.BuildServiceProvider();
-    }
-
-    private static async Task RunAsync(Options options, IServiceProvider services, ILogger<Program> logger)
-    {
-        var symbolProvider = services.GetRequiredService<SymbolListProvider>();
-        var downloadManager = services.GetRequiredService<StockDownloadManager>();
-
-        try
-        {
-            var symbolFile = options.SymbolFile ?? "sp500"; // デフォルトはS&P500
-            var symbols = symbolProvider.GetSymbols(symbolFile);
-            await downloadManager.DownloadStockDataAsync(symbols, options);
-
-            logger.LogInformation("Download completed successfully");
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to download stock data");
-            throw;
-        }
     }
 }
 
