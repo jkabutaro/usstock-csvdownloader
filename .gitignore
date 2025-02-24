@@ -37,4 +37,4 @@ bld/
 .vs/
 
 ## Downloaded CSV files
-*.csv
+output/*.csv
