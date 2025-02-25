@@ -8,7 +8,7 @@ namespace USStockDownloader.Utils
 {
     public static class DotNetRuntimeChecker
     {
-        private const string DOTNET_DOWNLOAD_URL = "https://dotnet.microsoft.com/download/dotnet/thank-you/runtime-9.0.2-windows-x64-installer";
+        private const string DOTNET_DOWNLOAD_URL = "https://download.visualstudio.microsoft.com/download/pr/e216cf20-77b5-4c82-bc16-3d817e906a88/4b7e673c1e97e5f2e6f39d6c3d4910b3/dotnet-runtime-9.0.2-win-x64.exe";
         private const string DOTNET_INSTALLER_NAME = "dotnet-runtime-9.0.2-win-x64.exe";
         private const string REQUIRED_VERSION = "9.0.2";
 
@@ -47,13 +47,16 @@ namespace USStockDownloader.Utils
                 var installerPath = Path.Combine(Path.GetTempPath(), DOTNET_INSTALLER_NAME);
                 using (var client = new HttpClient())
                 {
+                    Console.WriteLine("インストーラーをダウンロード中...");
                     var response = await client.GetAsync(DOTNET_DOWNLOAD_URL);
+                    response.EnsureSuccessStatusCode();
                     using (var fs = new FileStream(installerPath, FileMode.Create))
                     {
                         await response.Content.CopyToAsync(fs);
                     }
                 }
 
+                Console.WriteLine("インストーラーを実行中...");
                 // インストーラーを実行
                 var startInfo = new ProcessStartInfo
                 {
@@ -74,6 +77,11 @@ namespace USStockDownloader.Utils
                             Console.WriteLine(".NET Runtime installation completed.");
                             return true;
                         }
+                        else
+                        {
+                            Console.WriteLine($".NET Runtime のインストールに失敗しました。終了コード: {process.ExitCode}");
+                            Console.WriteLine($"Failed to install .NET Runtime. Exit code: {process.ExitCode}");
+                        }
                     }
                 }
 
@@ -86,6 +94,22 @@ namespace USStockDownloader.Utils
                 Console.WriteLine($".NET Runtime のインストール中にエラーが発生しました: {ex.Message}");
                 Console.WriteLine($"Error during .NET Runtime installation: {ex.Message}");
                 return false;
+            }
+            finally
+            {
+                // インストーラーファイルを削除
+                try
+                {
+                    var installerPath = Path.Combine(Path.GetTempPath(), DOTNET_INSTALLER_NAME);
+                    if (File.Exists(installerPath))
+                    {
+                        File.Delete(installerPath);
+                    }
+                }
+                catch
+                {
+                    // 削除に失敗しても続行
+                }
             }
         }
 
