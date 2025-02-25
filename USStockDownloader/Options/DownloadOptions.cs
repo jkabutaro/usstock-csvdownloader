@@ -17,6 +17,7 @@ public class DownloadOptions
     public bool ExponentialBackoff { get; set; } = true;
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
+    public string? OutputDirectory { get; set; }
 
     public DateTime GetStartDate() => StartDate ?? DateTime.Now.AddYears(-1);
     public DateTime GetEndDate() => EndDate ?? DateTime.Now;
@@ -83,6 +84,10 @@ public class DownloadOptions
             "--end-date",
             "End date for historical data (format: yyyy-MM-dd)");
 
+        var outputDirOption = new Option<string?>(
+            new[] { "-o", "--output" },
+            "Output directory for the downloaded data");
+
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(sp500Option);
         rootCommand.AddOption(sp500ForceOption);
@@ -96,6 +101,7 @@ public class DownloadOptions
         rootCommand.AddOption(exponentialOption);
         rootCommand.AddOption(startDateOption);
         rootCommand.AddOption(endDateOption);
+        rootCommand.AddOption(outputDirOption);
 
         rootCommand.SetHandler(
             (context) =>
@@ -113,6 +119,7 @@ public class DownloadOptions
                 options.ExponentialBackoff = context.ParseResult.GetValueForOption(exponentialOption);
                 options.StartDate = context.ParseResult.GetValueForOption(startDateOption);
                 options.EndDate = context.ParseResult.GetValueForOption(endDateOption);
+                options.OutputDirectory = context.ParseResult.GetValueForOption(outputDirOption);
             });
 
         rootCommand.Invoke(args);
@@ -179,6 +186,7 @@ public class DownloadOptions
         Console.WriteLine("  -e, --exponential  Use exponential backoff for retries (default: true)");
         Console.WriteLine("  --start-date     Start date for historical data (format: yyyy-MM-dd)");
         Console.WriteLine("  --end-date       End date for historical data (format: yyyy-MM-dd)");
+        Console.WriteLine("  -o, --output     Output directory for the downloaded data");
         Console.WriteLine();
         Console.WriteLine("Note: If not specified, start date is set to 1 year ago and end date is set to today.");
     }

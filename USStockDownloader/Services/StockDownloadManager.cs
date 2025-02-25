@@ -138,8 +138,9 @@ public class StockDownloadManager
                 return result;
             });
 
-            var filePath = Path.Combine("Data", $"{symbol}.csv");
-            Directory.CreateDirectory("Data");
+            var outputDirectory = string.IsNullOrEmpty(options.OutputDirectory) ? "Data" : options.OutputDirectory;
+            var filePath = Path.Combine(outputDirectory, $"{symbol}.csv");
+            Directory.CreateDirectory(outputDirectory);
 
             await using var writer = new StreamWriter(filePath);
             await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
