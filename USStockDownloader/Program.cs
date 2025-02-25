@@ -9,36 +9,67 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        // Windows 10以降のバージョンチェック
-        if (!WindowsVersionChecker.IsWindows10OrLater())
+        // キャッシュをチェック
+        var cache = RuntimeCheckCache.LoadCache();
+        if (cache != null)
         {
-            Console.WriteLine(WindowsVersionChecker.GetRequiredWindowsVersionMessage());
-            Environment.ExitCode = 1;
-            return;
-        }
-
-        // .NET Runtimeのチェックとインストール
-        if (!DotNetRuntimeChecker.IsRequiredRuntimeInstalled())
-        {
-            Console.WriteLine("必要な .NET Runtime がインストールされていません。");
-            Console.WriteLine("Required .NET Runtime is not installed.");
-
-            if (await DotNetRuntimeChecker.InstallRuntimeAsync())
+            if (!cache.WindowsVersionValid)
             {
-                Console.WriteLine("アプリケーションを再起動します...");
-                Console.WriteLine("Restarting application...");
-                DotNetRuntimeChecker.RestartApplication(args);
-                return;
-            }
-            else
-            {
-                Console.WriteLine("必要な .NET Runtime のインストールに失敗しました。");
-                Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0");
-                Console.WriteLine("Failed to install required .NET Runtime.");
-                Console.WriteLine("Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0");
+                Console.WriteLine(WindowsVersionChecker.GetRequiredWindowsVersionMessage());
                 Environment.ExitCode = 1;
                 return;
             }
+            if (!cache.DotNetRuntimeValid)
+            {
+                Console.WriteLine("必要な .NET Runtime がインストールされていません。");
+                Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0");
+                Environment.ExitCode = 1;
+                return;
+            }
+        }
+        else
+        {
+            // Windows 10以降のバージョンチェック
+            var windowsVersionValid = WindowsVersionChecker.IsWindows10OrLater();
+            if (!windowsVersionValid)
+            {
+                Console.WriteLine(WindowsVersionChecker.GetRequiredWindowsVersionMessage());
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            // .NET Runtimeのチェックとインストール
+            var dotNetRuntimeValid = DotNetRuntimeChecker.IsRequiredRuntimeInstalled();
+            if (!dotNetRuntimeValid)
+            {
+                Console.WriteLine("必要な .NET Runtime がインストールされていません。");
+                Console.WriteLine("Required .NET Runtime is not installed.");
+
+                if (await DotNetRuntimeChecker.InstallRuntimeAsync())
+                {
+                    Console.WriteLine("アプリケーションを再起動します...");
+                    Console.WriteLine("Restarting application...");
+                    DotNetRuntimeChecker.RestartApplication(args);
+                    return;
+                }
+                else
+                {
+                    Console.WriteLine("必要な .NET Runtime のインストールに失敗しました。");
+                    Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0");
+                    Console.WriteLine("Failed to install required .NET Runtime.");
+                    Console.WriteLine("Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0");
+                    Environment.ExitCode = 1;
+                    return;
+                }
+            }
+
+            // チェック結果をキャッシュに保存
+            RuntimeCheckCache.SaveCache(new RuntimeCheckResult
+            {
+                CheckDate = DateTime.Now,
+                WindowsVersionValid = windowsVersionValid,
+                DotNetRuntimeValid = dotNetRuntimeValid
+            });
         }
 
         var services = new ServiceCollection();
