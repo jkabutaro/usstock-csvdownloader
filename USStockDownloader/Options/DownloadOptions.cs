@@ -4,8 +4,14 @@ namespace USStockDownloader.Options;
 
 public class DownloadOptions
 {
-    [Option('f', "file", Required = true, HelpText = "Path to the file containing stock symbols")]
-    public required string SymbolFile { get; set; }
+    [Option('f', "file", Required = false, HelpText = "Path to the file containing stock symbols")]
+    public string? SymbolFile { get; set; }
+
+    [Option('s', "sp500", Required = false, HelpText = "Download S&P 500 symbols (if this is set, --file is not required)")]
+    public bool UseSP500 { get; set; }
+
+    [Option("sp500f", Required = false, HelpText = "Force update of S&P 500 symbols list")]
+    public bool ForceSP500Update { get; set; }
 
     [Option('p', "parallel", Default = 3, HelpText = "Maximum number of parallel downloads")]
     public int MaxConcurrentDownloads { get; set; }
@@ -30,6 +36,11 @@ public class DownloadOptions
 
     public void Validate()
     {
+        if (!UseSP500 && string.IsNullOrEmpty(SymbolFile))
+        {
+            throw new ArgumentException("Either --sp500 or --file must be specified.");
+        }
+
         if (StartDate > EndDate)
         {
             throw new ArgumentException("Start date must be before end date.");
@@ -68,6 +79,8 @@ public class DownloadOptions
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  -f, --file       Path to the file containing stock symbols");
+        Console.WriteLine("  -s, --sp500      Download S&P 500 symbols (if this is set, --file is not required)");
+        Console.WriteLine("  --sp500f         Force update of S&P 500 symbols list");
         Console.WriteLine("  -p, --parallel   Maximum number of parallel downloads (default: 3)");
         Console.WriteLine("  -r, --retries    Maximum number of retries per symbol (default: 3)");
         Console.WriteLine("  -d, --delay      Delay in milliseconds between retries (default: 1000)");

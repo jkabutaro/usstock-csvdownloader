@@ -27,14 +27,27 @@ class Program
     private static async Task RunAsync(Options options, IServiceProvider services)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        var symbolProvider = services.GetRequiredService<SymbolListProvider>();
         var downloadManager = services.GetRequiredService<StockDownloadManager>();
+        var sp500Service = services.GetRequiredService<SP500CacheService>();
+        var symbolProvider = services.GetRequiredService<SymbolListProvider>();
 
         try
         {
-            var symbolFile = options.SymbolFile ?? "sp500"; // デフォルトはS&P500
-            var symbols = await symbolProvider.GetSymbols(symbolFile);
-            await downloadManager.DownloadStockDataAsync(symbols);
+            List<string> symbols;
+            if (options.UseSP500)
+            {
+                var sp500Symbols = await sp500Service.GetSP500Symbols(options.ForceSP500Update);
+                symbols = sp500Symbols.Select(s => s.Symbol).ToList();
+                logger.LogInformation("Using {Count} symbols from S&P 500", symbols.Count);
+            }
+            else
+            {
+                var symbolFile = options.SymbolFile ?? "sp500"; // デフォルトはS&P500
+                symbols = await symbolProvider.GetSymbols(symbolFile);
+                logger.LogInformation("Loaded {Count} symbols from file: {File}", symbols.Count, symbolFile);
+            }
+
+            await downloadManager.DownloadStockDataAsync(symbols, options);
             logger.LogInformation("Download completed successfully");
         }
         catch (Exception ex)
@@ -51,11 +64,13 @@ class Program
         services.AddLogging(builder =>
         {
             builder.AddConsole();
+            builder.AddDebug();
             builder.SetMinimumLevel(LogLevel.Information);
         });
 
         services.AddHttpClient<IStockDataService, StockDataService>();
         services.AddHttpClient<IndexSymbolService>();
+        services.AddTransient<SP500CacheService>();
         services.AddSingleton<SymbolListProvider>();
         services.AddSingleton<StockDownloadManager>();
 
@@ -79,6 +94,12 @@ public class Options
 
     [Option('e', "exponential", Required = false, Default = true, HelpText = "Use exponential backoff for retries")]
     public bool ExponentialBackoff { get; set; }
+
+    [Option('s', "sp500", Required = false, Default = false, HelpText = "Use S&P 500 symbols")]
+    public bool UseSP500 { get; set; }
+
+    [Option('u', "update-sp500", Required = false, Default = false, HelpText = "Force update of S&P 500 symbols")]
+    public bool ForceSP500Update { get; set; }
 
     public RetryOptions ToRetryOptions() => new(MaxRetries, RetryDelay, ExponentialBackoff);
 }
