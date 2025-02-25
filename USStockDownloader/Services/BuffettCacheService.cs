@@ -18,7 +18,7 @@ public class BuffettCacheService
         _httpClient = httpClient;
     }
 
-    public async Task<List<StockSymbol>> GetSymbolsAsync()
+    public async Task<List<string>> GetSymbolsAsync()
     {
         var cacheDir = Path.Combine(Directory.GetCurrentDirectory(), "Cache");
         var cachePath = Path.Combine(cacheDir, CacheFileName);
@@ -26,13 +26,14 @@ public class BuffettCacheService
         if (File.Exists(cachePath))
         {
             _logger.LogInformation("Loading Buffett portfolio symbols from cache");
-            return await LoadFromCacheAsync(cachePath);
+            var symbols = await LoadFromCacheAsync(cachePath);
+            return symbols.Select(s => s.Symbol).ToList();
         }
 
         _logger.LogInformation("Fetching Buffett portfolio symbols from Wikipedia");
-        var symbols = await FetchFromWikipediaAsync();
-        await SaveToCacheAsync(symbols, cachePath);
-        return symbols;
+        var fetchedSymbols = await FetchFromWikipediaAsync();
+        await SaveToCacheAsync(fetchedSymbols, cachePath);
+        return fetchedSymbols.Select(s => s.Symbol).ToList();
     }
 
     private async Task<List<StockSymbol>> FetchFromWikipediaAsync()

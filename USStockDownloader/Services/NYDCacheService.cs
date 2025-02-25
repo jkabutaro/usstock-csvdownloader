@@ -20,6 +20,12 @@ public class NYDCacheService
         _cacheFile = Path.Combine("Cache", "nyd_symbols.json");
     }
 
+    public async Task<List<string>> GetSymbolsAsync()
+    {
+        var symbols = await GetNYDSymbols();
+        return symbols.Select(s => s.Symbol).ToList();
+    }
+
     public async Task<List<StockSymbol>> GetNYDSymbols()
     {
         if (_cachedSymbols != null)
@@ -99,11 +105,11 @@ public class NYDCacheService
             Directory.CreateDirectory(Path.GetDirectoryName(_cacheFile)!);
             var json = System.Text.Json.JsonSerializer.Serialize(symbols);
             await File.WriteAllTextAsync(_cacheFile, json);
-            _logger.LogInformation("Saved NY Dow symbols to cache");
+            _logger.LogInformation("Saved {Count} NY Dow symbols to cache", symbols.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to save NY Dow symbols to cache");
+            _logger.LogError(ex, "Failed to save NY Dow symbols to cache");
         }
     }
 }
