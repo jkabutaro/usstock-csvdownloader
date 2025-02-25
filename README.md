@@ -49,6 +49,12 @@ dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31
 - `--retry-delay <ms>`: リトライ間隔（ミリ秒、デフォルト: 1000）
 - `--exponential-backoff`: 指数バックオフを使用（デフォルト: true）
 
+## システム要件
+
+- Windows 10以降
+- .NET 9.0 Runtime
+- インターネット接続（Yahoo Finance APIへのアクセスに必要）
+
 ## エラー処理
 
 - HTTP 429（レート制限）: 60秒待機後に再試行

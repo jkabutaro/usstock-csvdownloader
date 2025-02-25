@@ -3,11 +3,20 @@ using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using USStockDownloader.Options;
 using USStockDownloader.Services;
+using USStockDownloader.Utils;
 
 class Program
 {
     static async Task Main(string[] args)
     {
+        // Windows 10以降のバージョンチェック
+        if (!WindowsVersionChecker.IsWindows10OrLater())
+        {
+            Console.WriteLine(WindowsVersionChecker.GetRequiredWindowsVersionMessage());
+            Environment.ExitCode = 1;
+            return;
+        }
+
         var services = new ServiceCollection();
 
         // ロギング設定
