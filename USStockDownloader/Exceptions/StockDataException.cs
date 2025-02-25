@@ -2,10 +2,18 @@ namespace USStockDownloader.Exceptions;
 
 public class StockDataException : Exception
 {
-    public string Symbol { get; }
+    public string? Symbol { get; }
     public DateTime? StartDate { get; }
     public DateTime? EndDate { get; }
-    public string ErrorType { get; }
+    public string? ErrorType { get; }
+
+    public StockDataException(string message) : base(message)
+    {
+    }
+
+    public StockDataException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 
     public StockDataException(string message, string symbol, string errorType, Exception? innerException = null) 
         : base(message, innerException)

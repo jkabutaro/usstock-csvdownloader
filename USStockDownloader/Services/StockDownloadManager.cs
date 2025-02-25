@@ -10,6 +10,7 @@ using Polly;
 using Polly.Retry;
 using CsvHelper;
 using System.Globalization;
+using System.Collections.Concurrent;
 
 namespace USStockDownloader.Services;
 
@@ -20,33 +21,30 @@ public class StockDownloadManager
     private readonly string _outputPath;
     private readonly int _maxConcurrentDownloads;
     private readonly RetryOptions _retryOptions;
+    private static readonly Random _jitter = new Random();
 
     public StockDownloadManager(
         IStockDataService stockDataService,
-        ILogger<StockDownloadManager> logger,
-        string outputPath,
-        int maxConcurrentDownloads,
-        RetryOptions retryOptions)
+        ILogger<StockDownloadManager> logger)
     {
         _stockDataService = stockDataService;
         _logger = logger;
-        _outputPath = outputPath;
-        _maxConcurrentDownloads = maxConcurrentDownloads;
-        _retryOptions = retryOptions;
+        _outputPath = Path.Combine(Environment.CurrentDirectory, "output");
+        _maxConcurrentDownloads = 3;
+        _retryOptions = new RetryOptions(5, 1000, true); // リトライ回数を5回に増やす
 
         Directory.CreateDirectory(_outputPath);
     }
 
-    public async Task DownloadStockDataAsync(List<string> symbols)
+    public async Task DownloadStockDataAsync(List<StockSymbol> symbols)
     {
-        // ヘッダー行を除外
-        symbols = symbols.Skip(1).ToList();
         _logger.LogInformation("Starting download for {Count} symbols with {MaxConcurrent} parallel downloads", symbols.Count, _maxConcurrentDownloads);
 
         var semaphore = new SemaphoreSlim(_maxConcurrentDownloads);
         var tasks = new List<Task>();
         var successCount = 0;
         var failureCount = 0;
+        var failedSymbols = new ConcurrentBag<(string Symbol, Exception Exception)>();
 
         foreach (var symbol in symbols)
         {
@@ -55,14 +53,50 @@ public class StockDownloadManager
             {
                 try
                 {
-                    await DownloadSymbolDataAsync(symbol);
-                    Interlocked.Increment(ref successCount);
-                    _logger.LogInformation("Successfully downloaded data for {Symbol}", symbol);
+                    var retryPolicy = Policy
+                        .Handle<Exception>()
+                        .WaitAndRetryAsync(
+                            _retryOptions.MaxRetries,
+                            retryAttempt => 
+                            {
+                                var baseDelay = _retryOptions.ExponentialBackoff
+                                    ? _retryOptions.RetryDelay * Math.Pow(2, retryAttempt - 1)
+                                    : _retryOptions.RetryDelay;
+                                return TimeSpan.FromMilliseconds(baseDelay) + 
+                                       TimeSpan.FromMilliseconds(_jitter.Next(0, 1000)); // ジッターを追加
+                            },
+                            onRetry: (ex, timeSpan, retryCount, context) =>
+                            {
+                                _logger.LogWarning(
+                                    ex,
+                                    "Retry {RetryCount} for {Symbol} after {Delay}ms. Error: {Error}",
+                                    retryCount,
+                                    symbol.Symbol,
+                                    timeSpan.TotalMilliseconds,
+                                    ex.Message);
+                            });
+
+                    await retryPolicy.ExecuteAsync(async () =>
+                    {
+                        var data = await _stockDataService.GetStockDataAsync(symbol.Symbol);
+                        
+                        // データの検証
+                        if (data == null || data.Count == 0)
+                        {
+                            throw new Exception($"No data received for {symbol.Symbol}");
+                        }
+
+                        var filePath = Path.Combine(_outputPath, $"{symbol.Symbol}.csv");
+                        await SaveToCsvAsync(data, filePath);
+                        Interlocked.Increment(ref successCount);
+                        _logger.LogInformation("Successfully downloaded data for {Symbol}", symbol.Symbol);
+                    });
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to download data for symbol {Symbol}", symbol);
                     Interlocked.Increment(ref failureCount);
+                    failedSymbols.Add((symbol.Symbol, ex));
+                    _logger.LogError(ex, "Failed to download data for {Symbol} after all retries", symbol.Symbol);
                 }
                 finally
                 {
@@ -72,39 +106,36 @@ public class StockDownloadManager
         }
 
         await Task.WhenAll(tasks);
-        _logger.LogInformation("Download completed. Success: {SuccessCount}, Failures: {FailureCount}", successCount, failureCount);
-    }
 
-    private async Task DownloadSymbolDataAsync(string symbol)
-    {
-        var retryPolicy = Policy<List<StockData>>
-            .Handle<Exception>()
-            .WaitAndRetryAsync(
-                _retryOptions.MaxRetries,
-                retryAttempt => TimeSpan.FromMilliseconds(_retryOptions.RetryDelay * (_retryOptions.ExponentialBackoff ? Math.Pow(2, retryAttempt - 1) : 1)),
-                onRetry: (exception, timeSpan, retryCount, context) =>
-                {
-                    _logger.LogWarning(
-                        "Retry {RetryCount} of {MaxRetries} for symbol {Symbol}, waiting {DelayMs}ms",
-                        retryCount,
-                        _retryOptions.MaxRetries,
-                        symbol,
-                        timeSpan.TotalMilliseconds);
-                });
-
-        var endDate = DateTime.Now;
-        var startDate = endDate.AddYears(-1);
-
-        var result = await retryPolicy.ExecuteAndCaptureAsync(async () =>
-            await _stockDataService.GetStockDataAsync(symbol, startDate, endDate));
-
-        if (result.Outcome == OutcomeType.Failure)
+        // 失敗した銘柄の詳細なレポート
+        if (failedSymbols.Count > 0)
         {
-            _logger.LogError(result.FinalException, "Failed to download data for symbol {Symbol} after {MaxRetries} retries", symbol, _retryOptions.MaxRetries);
-            throw result.FinalException;
+            _logger.LogError("Failed downloads details:");
+            foreach (var (symbol, ex) in failedSymbols)
+            {
+                _logger.LogError("Symbol: {Symbol}, Error: {Error}", symbol, ex.Message);
+            }
         }
 
-        await _stockDataService.SaveToCsvAsync(symbol, result.Result, _outputPath);
-        _logger.LogInformation("Successfully saved data for symbol {Symbol}", symbol);
+        _logger.LogInformation(
+            "Download completed. Success: {SuccessCount}, Failure: {FailureCount}. Success rate: {SuccessRate}%", 
+            successCount, 
+            failureCount,
+            (double)successCount / (successCount + failureCount) * 100);
+    }
+
+    private async Task SaveToCsvAsync(List<StockData> data, string filePath)
+    {
+        try
+        {
+            using var writer = new StreamWriter(filePath);
+            using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+            await csv.WriteRecordsAsync(data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save data to CSV file: {FilePath}", filePath);
+            throw;
+        }
     }
 }

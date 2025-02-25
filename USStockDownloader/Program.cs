@@ -34,7 +34,7 @@ class Program
         {
             var symbolFile = options.SymbolFile ?? "sp500"; // デフォルトはS&P500
             var symbols = await symbolProvider.GetSymbols(symbolFile);
-            await downloadManager.DownloadStockDataAsync(symbols, options);
+            await downloadManager.DownloadStockDataAsync(symbols);
             logger.LogInformation("Download completed successfully");
         }
         catch (Exception ex)
@@ -54,8 +54,8 @@ class Program
             builder.SetMinimumLevel(LogLevel.Information);
         });
 
-        services.AddHttpClient();
-        services.AddSingleton<IndexSymbolService>();
+        services.AddHttpClient<IStockDataService, StockDataService>();
+        services.AddHttpClient<IndexSymbolService>();
         services.AddSingleton<SymbolListProvider>();
         services.AddSingleton<StockDownloadManager>();
 
@@ -68,15 +68,17 @@ public class Options
     [Option('f', "file", Required = false, HelpText = "Path to the symbol file, or use 'sp500' for S&P 500 symbols, 'nyd' for NY Dow symbols")]
     public string? SymbolFile { get; set; }
 
-    [Option('m', "max-concurrent-downloads", Required = false, HelpText = "Maximum number of concurrent downloads")]
+    [Option('p', "parallel", Required = false, Default = 3, HelpText = "Maximum number of concurrent downloads")]
     public int MaxConcurrentDownloads { get; set; }
 
-    [Option('r', "max-retries", Required = false, HelpText = "Maximum number of retries")]
+    [Option('r', "retries", Required = false, Default = 3, HelpText = "Maximum number of retries")]
     public int MaxRetries { get; set; }
 
-    [Option('d', "retry-delay", Required = false, HelpText = "Retry delay in milliseconds")]
+    [Option('d', "delay", Required = false, Default = 1000, HelpText = "Retry delay in milliseconds")]
     public int RetryDelay { get; set; }
 
-    [Option('e', "exponential-backoff", Required = false, HelpText = "Use exponential backoff for retries")]
+    [Option('e', "exponential", Required = false, Default = true, HelpText = "Use exponential backoff for retries")]
     public bool ExponentialBackoff { get; set; }
+
+    public RetryOptions ToRetryOptions() => new(MaxRetries, RetryDelay, ExponentialBackoff);
 }
