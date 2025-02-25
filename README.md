@@ -8,35 +8,39 @@ Yahoo Finance APIを使用して、S&P 500やNYダウなどの株価データを
 - NYダウ銘柄の自動取得とダウンロード
 - バフェットのポートフォリオ銘柄の自動取得とダウンロード
 - カスタム銘柄リストからのダウンロード
+- 個別銘柄の指定によるダウンロード
 - 並列ダウンロードによる高速化
 - エラー時の自動リトライ
 - レート制限への対応
 - CSVフォーマットでのデータ保存
-- 出力先ディレクトリの指定
+- 動作環境の自動チェック
+  - Windows 10以降の確認
+  - .NET 9.0 Runtimeの確認
+- 実行時のキャッシュ管理
+  - 前回の環境チェック結果の保存
+  - 銘柄リストのキャッシュ
+  - 取引時間に基づくデータ更新制御
 
 ## 使い方
 
 ```bash
 # S&P 500銘柄のダウンロード
-dotnet run -- --sp500
+USStockDownloader.exe --sp500
 
 # NYダウ銘柄のダウンロード
-dotnet run -- --nyd
+USStockDownloader.exe --nyd
 
 # バフェット銘柄のダウンロード
-dotnet run -- --buffett
+USStockDownloader.exe --buffett
 
 # カスタム銘柄リストからのダウンロード
-dotnet run -- --file symbols.txt
+USStockDownloader.exe --file symbols.txt
 
 # 個別銘柄の指定（カンマ区切り）
-dotnet run -- --symbols AAPL,MSFT,GOOGL
+USStockDownloader.exe --symbols AAPL,MSFT,GOOGL
 
-# 期間を指定してダウンロード（2024年1月1日から2024年12月31日まで）
-dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31
-
-# 出力先ディレクトリを指定してダウンロード
-dotnet run -- --symbols AAPL --output "C:\stock\data"
+# リトライ設定を変更してダウンロード
+USStockDownloader.exe --file symbols.txt --max-retries 5 --retry-delay 5000 --rate-limit-delay 120000
 ```
 
 ## オプション
@@ -46,13 +50,11 @@ dotnet run -- --symbols AAPL --output "C:\stock\data"
 - `--buffett`: バフェットのポートフォリオ銘柄をダウンロード
 - `--file <path>`: 指定したファイルから銘柄リストを読み込み
 - `--symbols <symbols>`: カンマ区切りで個別銘柄を指定（例：AAPL,MSFT,GOOGL）
-- `--start-date <date>`: 履歴データの開始日（形式：yyyy-MM-dd、デフォルト：1年前）
-- `--end-date <date>`: 履歴データの終了日（形式：yyyy-MM-dd、デフォルト：今日）
 - `--max-concurrent <num>`: 並列ダウンロード数（デフォルト: 3）
 - `--max-retries <num>`: リトライ回数（デフォルト: 3）
 - `--retry-delay <ms>`: リトライ間隔（ミリ秒、デフォルト: 1000）
+- `--rate-limit-delay <ms>`: レート制限時の待機時間（ミリ秒、デフォルト: 60000）
 - `--exponential-backoff`: 指数バックオフを使用（デフォルト: true）
-- `-o, --output <path>`: 出力先ディレクトリを指定（デフォルト: Data）
 
 ## システム要件
 
@@ -62,21 +64,21 @@ dotnet run -- --symbols AAPL --output "C:\stock\data"
 
 ## エラー処理
 
-- HTTP 429（レート制限）: 60秒待機後に再試行
+- HTTP 429（レート制限）: デフォルトで60秒待機後に再試行（`--rate-limit-delay`で調整可能）
 - その他のエラー: 設定された間隔で再試行
 - 指数バックオフ: リトライ毎に待機時間を2倍に
-- ジッター: 同時リトライを分散させるためのランダム遅延
+- ジッター: 同時リトライを分散させるためのランダム遅延（待機時間の±20%）
 
 ## データ形式
 
-ダウンロードしたデータは、指定された出力先ディレクトリ（デフォルトは `Data`）に銘柄ごとのCSVファイルとして保存されます。
+ダウンロードしたデータは、`Data` ディレクトリに銘柄ごとのCSVファイルとして保存されます。
 
 ```csv
 Date,Open,High,Low,Close,Volume
-20240225,180.15,182.34,179.89,181.56,75234567
+2024-02-25,180.15,182.34,179.89,181.56,75234567
 ```
 
-- `Date`: 日付（yyyyMMdd形式の数値）
+- `Date`: 日付（yyyy-MM-dd形式）
 - `Open`: 始値
 - `High`: 高値
 - `Low`: 安値
@@ -95,7 +97,27 @@ Date,Open,High,Low,Close,Volume
 - ピリオドを含む銘柄（BRK.B、BF.B）は特別な処理が必要
 - 一部の銘柄でデータが欠落する可能性あり
 - Yahoo Finance APIの利用制限に注意
-- 出力先ディレクトリは自動的に作成されます
+  - レート制限に遭遇した場合は `--rate-limit-delay` を増やしてください
+  - 並列ダウンロード数 `--max-concurrent` を減らすことで制限を回避できる場合があります
+
+## 開発ログ
+
+### 2025-02-25
+- `--symbols`オプションを復活
+  - カンマ区切りで複数の銘柄を指定可能（例：`--symbols AAPL,MSFT,GOOGL`）
+- リトライロジックの改善
+  - レート制限時の処理を強化（`RateLimitException`と`HttpStatusCode.TooManyRequests`に対応）
+  - より詳細なログ出力を追加
+  - エクスポネンシャルバックオフとジッターを実装
+
+### 次回の課題
+1. Yahoo Finance APIのレート制限対策
+   - リトライ間隔の最適化（現在は初回5秒、レート制限時30秒）
+   - 同時ダウンロード数の調整（現在は3並列）
+   - テスト時の銘柄数を制限（1-2銘柄から開始）
+2. エラーハンドリングの強化
+   - 失敗した銘柄のレポート機能
+   - リトライ後も失敗した場合の処理改善
 
 ## 依存関係
 

@@ -1,8 +1,10 @@
 using Microsoft.Win32;
 using System;
+using System.Runtime.Versioning;
 
 namespace USStockDownloader.Utils
 {
+    [SupportedOSPlatform("windows")]
     public static class WindowsVersionChecker
     {
         public static bool IsWindows10OrLater()

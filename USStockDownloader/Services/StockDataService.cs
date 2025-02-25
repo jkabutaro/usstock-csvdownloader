@@ -114,35 +114,43 @@ public class StockDataService : IStockDataService
     private AsyncRetryPolicy<List<StockData>> CreateRetryPolicy()
     {
         return Policy<List<StockData>>
-            .Handle<Exception>()
+            .Handle<RateLimitException>()
+            .Or<HttpRequestException>(ex => ex.StatusCode == HttpStatusCode.TooManyRequests)
             .WaitAndRetryAsync(
                 _retryOptions.MaxRetries,
                 retryAttempt =>
                 {
-                    var delay = CalculateDelay(retryAttempt, null);
+                    var delay = CalculateDelay(retryAttempt);
+                    _logger.LogInformation(
+                        "Calculating delay for attempt {RetryAttempt}: base={BaseDelay}, actual={ActualDelay}",
+                        retryAttempt,
+                        _retryOptions.RetryDelay,
+                        delay);
                     return TimeSpan.FromMilliseconds(delay);
                 },
                 (exception, timeSpan, retryCount, _) =>
                 {
                     _logger.LogWarning(
-                        "Retry attempt {RetryAttempt} of {MaxRetries}. Waiting {Delay}ms before next attempt",
+                        "Rate limit hit. Retry attempt {RetryAttempt} of {MaxRetries}. Waiting {Delay}ms before next attempt",
                         retryCount,
                         _retryOptions.MaxRetries,
                         timeSpan.TotalMilliseconds);
                 });
     }
 
-    private int CalculateDelay(int retryAttempt, Exception? exception)
+    private int CalculateDelay(int retryAttempt)
     {
         var baseDelay = _retryOptions.RetryDelay;
+
+        // レート制限の場合は、より長い遅延を使用
+        if (retryAttempt > 1)
+        {
+            baseDelay = _retryOptions.RateLimitDelay;
+        }
+
         if (_retryOptions.ExponentialBackoff)
         {
             baseDelay = (int)(baseDelay * Math.Pow(2, retryAttempt - 1));
-        }
-
-        if (exception?.Message.Contains("429") == true)
-        {
-            baseDelay = _retryOptions.RateLimitDelay;
         }
 
         var random = new Random();
