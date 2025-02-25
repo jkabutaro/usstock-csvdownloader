@@ -6,7 +6,8 @@ public sealed class StockDataMap : ClassMap<StockData>
 {
     public StockDataMap()
     {
-        Map(m => m.DateNumber).Name("Date");
+        Map(m => m.Symbol).Name("Symbol");
+        Map(m => m.Date).Name("Date").TypeConverterOption.Format("yyyyMMdd");
         Map(m => m.Open).Name("Open");
         Map(m => m.High).Name("High");
         Map(m => m.Low).Name("Low");

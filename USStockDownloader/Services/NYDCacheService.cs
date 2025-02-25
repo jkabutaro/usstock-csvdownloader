@@ -5,22 +5,22 @@ using HtmlAgilityPack;
 
 namespace USStockDownloader.Services;
 
-public class SP500CacheService
+public class NYDCacheService
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<SP500CacheService> _logger;
+    private readonly ILogger<NYDCacheService> _logger;
     private readonly string _cacheFile;
     private List<StockSymbol>? _cachedSymbols;
-    private const string SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies";
+    private const string NYD_URL = "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average";
 
-    public SP500CacheService(HttpClient httpClient, ILogger<SP500CacheService> logger)
+    public NYDCacheService(HttpClient httpClient, ILogger<NYDCacheService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _cacheFile = Path.Combine("Cache", "sp500_symbols.json");
+        _cacheFile = Path.Combine("Cache", "nyd_symbols.json");
     }
 
-    public async Task<List<StockSymbol>> GetSP500Symbols()
+    public async Task<List<StockSymbol>> GetNYDSymbols()
     {
         if (_cachedSymbols != null)
         {
@@ -35,56 +35,59 @@ public class SP500CacheService
                 _cachedSymbols = System.Text.Json.JsonSerializer.Deserialize<List<StockSymbol>>(json);
                 if (_cachedSymbols != null)
                 {
-                    _logger.LogInformation("Loaded {Count} S&P 500 symbols from cache", _cachedSymbols.Count);
+                    _logger.LogInformation("Loaded {Count} NY Dow symbols from cache", _cachedSymbols.Count);
                     return _cachedSymbols;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to load S&P 500 symbols from cache");
+                _logger.LogWarning(ex, "Failed to load NY Dow symbols from cache");
             }
         }
 
-        _cachedSymbols = await FetchSP500Symbols();
+        _cachedSymbols = await FetchNYDSymbols();
         await SaveToCache(_cachedSymbols);
         return _cachedSymbols;
     }
 
-    private async Task<List<StockSymbol>> FetchSP500Symbols()
+    private async Task<List<StockSymbol>> FetchNYDSymbols()
     {
         try
         {
-            var response = await _httpClient.GetAsync(SP500_URL);
+            var response = await _httpClient.GetAsync(NYD_URL);
             response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync();
 
             var doc = new HtmlDocument();
             doc.LoadHtml(content);
 
-            var table = doc.DocumentNode.SelectSingleNode("//table[@id='constituents']");
+            var table = doc.DocumentNode.SelectSingleNode("//table[contains(@class, 'wikitable') and contains(., 'Symbol')]");
             if (table == null)
             {
-                throw new Exception("Failed to find S&P 500 constituents table");
+                throw new Exception("Failed to find NY Dow constituents table");
             }
 
             var symbols = new List<StockSymbol>();
             foreach (var row in table.SelectNodes(".//tr").Skip(1))
             {
                 var cells = row.SelectNodes(".//td");
-                if (cells != null && cells.Count > 0)
+                if (cells != null && cells.Count >= 2)
                 {
-                    var symbol = cells[0].InnerText.Trim();
-                    var name = cells[1].InnerText.Trim();
-                    symbols.Add(new StockSymbol { Symbol = symbol, Name = name });
+                    var symbol = cells[1].InnerText.Trim();
+                    var name = cells[0].InnerText.Trim();
+                    if (!string.IsNullOrWhiteSpace(symbol))
+                    {
+                        symbols.Add(new StockSymbol { Symbol = symbol, Name = name });
+                    }
                 }
             }
 
-            _logger.LogInformation("Fetched {Count} S&P 500 symbols from Wikipedia", symbols.Count);
+            _logger.LogInformation("Fetched {Count} NY Dow symbols from Wikipedia", symbols.Count);
             return symbols;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch S&P 500 symbols from Wikipedia");
+            _logger.LogError(ex, "Failed to fetch NY Dow symbols from Wikipedia");
             throw;
         }
     }
@@ -96,11 +99,11 @@ public class SP500CacheService
             Directory.CreateDirectory(Path.GetDirectoryName(_cacheFile)!);
             var json = System.Text.Json.JsonSerializer.Serialize(symbols);
             await File.WriteAllTextAsync(_cacheFile, json);
-            _logger.LogInformation("Saved S&P 500 symbols to cache");
+            _logger.LogInformation("Saved NY Dow symbols to cache");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to save S&P 500 symbols to cache");
+            _logger.LogWarning(ex, "Failed to save NY Dow symbols to cache");
         }
     }
 }

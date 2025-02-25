@@ -1,62 +1,60 @@
-using System.Reflection;
-using CsvHelper;
-using System.Globalization;
-using USStockDownloader.Models;
 using Microsoft.Extensions.Logging;
+using USStockDownloader.Models;
+using System.IO;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace USStockDownloader.Services;
 
 public class SymbolListProvider
 {
-    private readonly ILogger<SymbolListProvider> _logger;
     private readonly IndexSymbolService _indexSymbolService;
-    private readonly string _dataDirectory;
+    private readonly ILogger<SymbolListProvider> _logger;
 
-    public SymbolListProvider(ILogger<SymbolListProvider> logger, IndexSymbolService indexSymbolService)
+    public SymbolListProvider(
+        IndexSymbolService indexSymbolService,
+        ILogger<SymbolListProvider> logger)
     {
-        _logger = logger;
         _indexSymbolService = indexSymbolService;
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        _dataDirectory = Path.Combine(Path.GetDirectoryName(assemblyLocation)!, "Data");
+        _logger = logger;
     }
 
-    public async Task<List<StockSymbol>> GetSymbols(string source)
+    public async Task<List<string>> GetSymbolsAsync(bool useSP500, bool useNYD, string? symbolFile)
     {
-        try
+        if (useSP500)
         {
-            return source.ToLower() switch
-            {
-                "sp500" => await _indexSymbolService.GetSP500Symbols(),
-                "nyd" => await _indexSymbolService.GetDJIASymbols(),
-                _ => LoadSymbolsFromFile(source)
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get symbols from {Source}", source);
-            throw;
-        }
-    }
-
-    private List<StockSymbol> LoadSymbolsFromFile(string filePath)
-    {
-        if (!File.Exists(filePath))
-        {
-            throw new FileNotFoundException($"Symbol file not found: {filePath}");
-        }
-
-        try
-        {
-            using var reader = new StreamReader(filePath);
-            using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-            var symbols = csv.GetRecords<StockSymbol>().ToList();
-            _logger.LogInformation("Loaded {Count} symbols from file {FilePath}", symbols.Count, filePath);
+            var symbols = await _indexSymbolService.GetSP500Symbols();
+            _logger.LogInformation("Loaded {Count} S&P 500 symbols", symbols.Count);
             return symbols;
         }
-        catch (Exception ex)
+        
+        if (useNYD)
         {
-            _logger.LogError(ex, "Failed to load symbols from file {FilePath}", filePath);
-            throw;
+            var symbols = await _indexSymbolService.GetNYDSymbols();
+            _logger.LogInformation("Loaded {Count} NY Dow symbols", symbols.Count);
+            return symbols;
         }
+
+        if (!string.IsNullOrEmpty(symbolFile))
+        {
+            if (!File.Exists(symbolFile))
+            {
+                throw new FileNotFoundException($"Symbol file not found: {symbolFile}");
+            }
+
+            try
+            {
+                var symbols = await File.ReadAllLinesAsync(symbolFile);
+                _logger.LogInformation("Loaded {Count} symbols from file: {File}", symbols.Length, symbolFile);
+                return symbols.ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load symbols from file {File}", symbolFile);
+                throw;
+            }
+        }
+
+        throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, or --file");
     }
 }
