@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System;
 
 namespace USStockDownloader.Utils
 {
@@ -16,6 +17,28 @@ namespace USStockDownloader.Utils
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "USStockDownloader");
         private static readonly string CacheFile = Path.Combine(CacheDirectory, "stock_data_cache.json");
+
+        // 米国東部時間の取引時間（9:30-16:00）
+        private static readonly TimeSpan MarketOpenTime = TimeSpan.FromHours(9.5);
+        private static readonly TimeSpan MarketCloseTime = TimeSpan.FromHours(16);
+
+        private static DateTime ConvertToEasternTime(DateTime utcTime)
+        {
+            var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(utcTime.ToUniversalTime(), easternZone);
+        }
+
+        private static bool IsMarketHours()
+        {
+            var easternTime = ConvertToEasternTime(DateTime.Now);
+            
+            // 土日は市場が閉まっている
+            if (easternTime.DayOfWeek == DayOfWeek.Saturday || easternTime.DayOfWeek == DayOfWeek.Sunday)
+                return false;
+
+            var timeOfDay = easternTime.TimeOfDay;
+            return timeOfDay >= MarketOpenTime && timeOfDay <= MarketCloseTime;
+        }
 
         public static Dictionary<string, StockDataCacheInfo> LoadCache()
         {
@@ -56,8 +79,13 @@ namespace USStockDownloader.Utils
                 var cache = LoadCache();
                 if (cache.TryGetValue(symbol, out var info))
                 {
-                    // キャッシュが古すぎる場合は更新
-                    if (DateTime.Now - info.LastUpdate > maxAge)
+                    // 取引時間内は常に更新
+                    if (IsMarketHours())
+                        return true;
+
+                    // 取引時間外は1時間以上経過している場合のみ更新
+                    var timeSinceLastUpdate = DateTime.Now - info.LastUpdate;
+                    if (timeSinceLastUpdate > TimeSpan.FromHours(1))
                         return true;
 
                     // 要求された期間がキャッシュの範囲外の場合は更新
