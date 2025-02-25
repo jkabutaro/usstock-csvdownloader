@@ -24,8 +24,44 @@ namespace USStockDownloader.Utils
 
         private static DateTime ConvertToEasternTime(DateTime utcTime)
         {
-            var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
-            return TimeZoneInfo.ConvertTimeFromUtc(utcTime.ToUniversalTime(), easternZone);
+            try
+            {
+                var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+                return TimeZoneInfo.ConvertTimeFromUtc(utcTime.ToUniversalTime(), easternZone);
+            }
+            catch
+            {
+                // タイムゾーンIDがない場合（例：Linux環境）は "America/New_York" を試す
+                try
+                {
+                    var easternZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+                    return TimeZoneInfo.ConvertTimeFromUtc(utcTime.ToUniversalTime(), easternZone);
+                }
+                catch
+                {
+                    // どちらのタイムゾーンIDも利用できない場合は、UTCからの固定オフセットを使用
+                    // 夏時間中（3月第2日曜日から11月第1日曜日まで）はUTC-4、それ以外はUTC-5
+                    var year = utcTime.Year;
+                    var isDst = IsInDaylightSavingTime(utcTime);
+                    var offset = isDst ? -4 : -5;
+                    return utcTime.ToUniversalTime().AddHours(offset);
+                }
+            }
+        }
+
+        private static bool IsInDaylightSavingTime(DateTime date)
+        {
+            var year = date.Year;
+
+            // 3月の第2日曜日を計算
+            var marchSecondSunday = new DateTime(year, 3, 1).AddDays((14 - (int)new DateTime(year, 3, 1).DayOfWeek) % 7);
+            var dstStart = marchSecondSunday.AddHours(2); // 午前2時に開始
+
+            // 11月の第1日曜日を計算
+            var novemberFirstSunday = new DateTime(year, 11, 1).AddDays((7 - (int)new DateTime(year, 11, 1).DayOfWeek) % 7);
+            var dstEnd = novemberFirstSunday.AddHours(2); // 午前2時に終了
+
+            return date >= dstStart && date < dstEnd;
         }
 
         private static bool IsMarketHours()
@@ -36,8 +72,43 @@ namespace USStockDownloader.Utils
             if (easternTime.DayOfWeek == DayOfWeek.Saturday || easternTime.DayOfWeek == DayOfWeek.Sunday)
                 return false;
 
+            // 主要な米国の祝日をチェック
+            if (IsUsHoliday(easternTime))
+                return false;
+
             var timeOfDay = easternTime.TimeOfDay;
             return timeOfDay >= MarketOpenTime && timeOfDay <= MarketCloseTime;
+        }
+
+        private static bool IsUsHoliday(DateTime date)
+        {
+            var month = date.Month;
+            var day = date.Day;
+            var dayOfWeek = date.DayOfWeek;
+
+            // 固定の祝日
+            if ((month == 1 && day == 1) ||   // 元日
+                (month == 7 && day == 4) ||   // 独立記念日
+                (month == 12 && day == 25))   // クリスマス
+                return true;
+
+            // 第3月曜日の祝日
+            if ((month == 1 && dayOfWeek == DayOfWeek.Monday && day >= 15 && day <= 21) || // マーティン・ルーサー・キング・ジュニアの日
+                (month == 2 && dayOfWeek == DayOfWeek.Monday && day >= 15 && day <= 21) || // プレジデントデー
+                (month == 9 && dayOfWeek == DayOfWeek.Monday && day >= 1 && day <= 7))     // レイバーデー
+                return true;
+
+            // メモリアルデー（5月の最終月曜日）
+            if (month == 5 && dayOfWeek == DayOfWeek.Monday && 
+                day > (31 - 7) && day <= 31)
+                return true;
+
+            // サンクスギビング（11月の第4木曜日）
+            if (month == 11 && dayOfWeek == DayOfWeek.Thursday && 
+                day >= 22 && day <= 28)
+                return true;
+
+            return false;
         }
 
         public static Dictionary<string, StockDataCacheInfo> LoadCache()
