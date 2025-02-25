@@ -22,30 +22,41 @@ namespace USStockDownloader.Utils
         private static readonly TimeSpan MarketOpenTime = TimeSpan.FromHours(9.5);
         private static readonly TimeSpan MarketCloseTime = TimeSpan.FromHours(16);
 
-        private static DateTime ConvertToEasternTime(DateTime utcTime)
+        private static DateTime ConvertToEasternTime(DateTime localTime)
         {
             try
             {
-                var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
-                return TimeZoneInfo.ConvertTimeFromUtc(utcTime.ToUniversalTime(), easternZone);
-            }
-            catch
-            {
-                // タイムゾーンIDがない場合（例：Linux環境）は "America/New_York" を試す
+                // まずローカル時間をUTCに変換
+                var utcTime = localTime.ToUniversalTime();
+
                 try
                 {
-                    var easternZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-                    return TimeZoneInfo.ConvertTimeFromUtc(utcTime.ToUniversalTime(), easternZone);
+                    // Windows環境
+                    var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+                    return TimeZoneInfo.ConvertTimeFromUtc(utcTime, easternZone);
                 }
                 catch
                 {
-                    // どちらのタイムゾーンIDも利用できない場合は、UTCからの固定オフセットを使用
-                    // 夏時間中（3月第2日曜日から11月第1日曜日まで）はUTC-4、それ以外はUTC-5
-                    var year = utcTime.Year;
-                    var isDst = IsInDaylightSavingTime(utcTime);
-                    var offset = isDst ? -4 : -5;
-                    return utcTime.ToUniversalTime().AddHours(offset);
+                    try
+                    {
+                        // Linux/Unix環境
+                        var easternZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+                        return TimeZoneInfo.ConvertTimeFromUtc(utcTime, easternZone);
+                    }
+                    catch
+                    {
+                        // タイムゾーンが見つからない場合は手動で計算
+                        var isDst = IsInDaylightSavingTime(utcTime);
+                        var offset = isDst ? -4 : -5;  // EDT: UTC-4, EST: UTC-5
+                        return utcTime.AddHours(offset);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                // 時間変換に完全に失敗した場合はログを出力
+                Console.WriteLine($"Warning: Time conversion failed. Using local time. Error: {ex.Message}");
+                return localTime;
             }
         }
 
@@ -66,18 +77,32 @@ namespace USStockDownloader.Utils
 
         private static bool IsMarketHours()
         {
-            var easternTime = ConvertToEasternTime(DateTime.Now);
-            
-            // 土日は市場が閉まっている
-            if (easternTime.DayOfWeek == DayOfWeek.Saturday || easternTime.DayOfWeek == DayOfWeek.Sunday)
-                return false;
+            try
+            {
+                var easternTime = ConvertToEasternTime(DateTime.Now);
+                
+                // 土日は市場が閉まっている
+                if (easternTime.DayOfWeek == DayOfWeek.Saturday || easternTime.DayOfWeek == DayOfWeek.Sunday)
+                    return false;
 
-            // 主要な米国の祝日をチェック
-            if (IsUsHoliday(easternTime))
-                return false;
+                // 主要な米国の祝日をチェック
+                if (IsUsHoliday(easternTime))
+                    return false;
 
-            var timeOfDay = easternTime.TimeOfDay;
-            return timeOfDay >= MarketOpenTime && timeOfDay <= MarketCloseTime;
+                var timeOfDay = easternTime.TimeOfDay;
+                var isMarketOpen = timeOfDay >= MarketOpenTime && timeOfDay <= MarketCloseTime;
+
+                // デバッグ用のログ出力
+                Console.WriteLine($"Market status check - Eastern Time: {easternTime:yyyy-MM-dd HH:mm:ss}, Market is {(isMarketOpen ? "open" : "closed")}");
+
+                return isMarketOpen;
+            }
+            catch (Exception ex)
+            {
+                // 時間判定に失敗した場合は安全のためfalseを返す
+                Console.WriteLine($"Warning: Market hours check failed. Error: {ex.Message}");
+                return false;
+            }
         }
 
         private static bool IsUsHoliday(DateTime date)
@@ -154,7 +179,7 @@ namespace USStockDownloader.Utils
                     if (IsMarketHours())
                         return true;
 
-                    // 取引時間外は1時間以上経過している場合のみ更新
+                    // 取引時間外は1時間以上経過してている場合のみ更新
                     var timeSinceLastUpdate = DateTime.Now - info.LastUpdate;
                     if (timeSinceLastUpdate > TimeSpan.FromHours(1))
                         return true;
