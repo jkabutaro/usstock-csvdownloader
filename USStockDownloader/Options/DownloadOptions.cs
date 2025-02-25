@@ -10,6 +10,7 @@ public class DownloadOptions
     public bool UseNYD { get; set; }
     public bool ForceNYDUpdate { get; set; }
     public bool UseBuffett { get; set; }
+    public string? Symbols { get; set; }
     public int MaxConcurrentDownloads { get; set; } = 3;
     public int MaxRetries { get; set; } = 3;
     public int RetryDelay { get; set; } = 1000;
@@ -48,6 +49,10 @@ public class DownloadOptions
             new[] { "-b", "--buffett" },
             "Use Buffett's portfolio symbols");
 
+        var symbolsOption = new Option<string?>(
+            new[] { "--symbols" },
+            "Comma-separated list of stock symbols");
+
         var parallelOption = new Option<int>(
             new[] { "-p", "--parallel" },
             () => 3,
@@ -74,6 +79,7 @@ public class DownloadOptions
         rootCommand.AddOption(nydOption);
         rootCommand.AddOption(nydForceOption);
         rootCommand.AddOption(buffettOption);
+        rootCommand.AddOption(symbolsOption);
         rootCommand.AddOption(parallelOption);
         rootCommand.AddOption(retriesOption);
         rootCommand.AddOption(delayOption);
@@ -88,6 +94,7 @@ public class DownloadOptions
                 options.UseNYD = context.ParseResult.GetValueForOption(nydOption);
                 options.ForceNYDUpdate = context.ParseResult.GetValueForOption(nydForceOption);
                 options.UseBuffett = context.ParseResult.GetValueForOption(buffettOption);
+                options.Symbols = context.ParseResult.GetValueForOption(symbolsOption);
                 options.MaxConcurrentDownloads = context.ParseResult.GetValueForOption(parallelOption);
                 options.MaxRetries = context.ParseResult.GetValueForOption(retriesOption);
                 options.RetryDelay = context.ParseResult.GetValueForOption(delayOption);
@@ -100,9 +107,9 @@ public class DownloadOptions
 
     public void Validate()
     {
-        if (string.IsNullOrEmpty(SymbolFile) && !UseSP500 && !UseNYD && !UseBuffett)
+        if (string.IsNullOrEmpty(SymbolFile) && !UseSP500 && !UseNYD && !UseBuffett && string.IsNullOrEmpty(Symbols))
         {
-            throw new ArgumentException("Either --file, --sp500, --nyd, or --buffett option must be specified");
+            throw new ArgumentException("Either --file, --sp500, --nyd, --buffett, or --symbols option must be specified");
         }
 
         if (StartDate > EndDate)
@@ -143,6 +150,7 @@ public class DownloadOptions
         Console.WriteLine("  -n, --nyd        Download NY Dow symbols (if this is set, --file is not required)");
         Console.WriteLine("  --nydf           Force update of NY Dow symbols list");
         Console.WriteLine("  -b, --buffett    Download Buffett's portfolio symbols (if this is set, --file is not required)");
+        Console.WriteLine("  --symbols        Comma-separated list of stock symbols");
         Console.WriteLine("  -p, --parallel   Maximum number of parallel downloads (default: 3)");
         Console.WriteLine("  -r, --retries    Maximum number of retries per symbol (default: 3)");
         Console.WriteLine("  -d, --delay      Delay in milliseconds between retries (default: 1000)");

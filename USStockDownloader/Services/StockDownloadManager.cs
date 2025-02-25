@@ -69,6 +69,14 @@ public class StockDownloadManager
             _logger.LogInformation("Loaded {Count} symbols from file: {File}", fileSymbols.Count, options.SymbolFile);
         }
 
+        if (!string.IsNullOrEmpty(options.Symbols))
+        {
+            var individualSymbols = options.Symbols.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.ToUpper());
+            symbols.AddRange(individualSymbols);
+            _logger.LogInformation("Added {Count} individual symbols", individualSymbols.Count());
+        }
+
         if (symbols.Count == 0)
         {
             throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, --buffett, or --file");

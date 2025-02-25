@@ -27,6 +27,9 @@ dotnet run -- --buffett
 
 # カスタム銘柄リストからのダウンロード
 dotnet run -- --file symbols.txt
+
+# 個別銘柄の指定（カンマ区切り）
+dotnet run -- --symbols AAPL,MSFT,GOOGL
 ```
 
 ## オプション
@@ -35,6 +38,7 @@ dotnet run -- --file symbols.txt
 - `--nyd`: NYダウ銘柄をダウンロード
 - `--buffett`: バフェットのポートフォリオ銘柄をダウンロード
 - `--file <path>`: 指定したファイルから銘柄リストを読み込み
+- `--symbols <symbols>`: カンマ区切りで個別銘柄を指定（例：AAPL,MSFT,GOOGL）
 - `--max-concurrent <num>`: 並列ダウンロード数（デフォルト: 3）
 - `--max-retries <num>`: リトライ回数（デフォルト: 3）
 - `--retry-delay <ms>`: リトライ間隔（ミリ秒、デフォルト: 1000）
