@@ -5,10 +5,14 @@ namespace USStockDownloader.Models;
 
 public class StockData
 {
-    [Name("Symbol")]
+    [Ignore]
     public string Symbol { get; set; } = string.Empty;
     
     [Name("Date")]
+    [Format("yyyyMMdd")]
+    public int DateNumber => Date.Year * 10000 + Date.Month * 100 + Date.Day;
+
+    [Ignore]
     public DateTime Date { get; set; }
     
     [Name("Open")]

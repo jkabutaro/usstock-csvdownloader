@@ -61,9 +61,16 @@ dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31
 ダウンロードしたデータは `Data` ディレクトリに銘柄ごとのCSVファイルとして保存されます。
 
 ```csv
-Symbol,Date,Open,High,Low,Close,Volume
-AAPL,2024-02-25,180.15,182.34,179.89,181.56,75234567
+Date,Open,High,Low,Close,Volume
+20240225,180.15,182.34,179.89,181.56,75234567
 ```
+
+- `Date`: 日付（yyyyMMdd形式の数値）
+- `Open`: 始値
+- `High`: 高値
+- `Low`: 安値
+- `Close`: 終値
+- `Volume`: 出来高
 
 ## キャッシュ
 
