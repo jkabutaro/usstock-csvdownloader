@@ -120,10 +120,51 @@ public class DownloadOptions
                 options.StartDate = context.ParseResult.GetValueForOption(startDateOption);
                 options.EndDate = context.ParseResult.GetValueForOption(endDateOption);
                 options.OutputDirectory = context.ParseResult.GetValueForOption(outputDirOption);
+
+                // 引数の検証
+                if (!options.UseSP500 && !options.UseNYD && !options.UseBuffett && 
+                    string.IsNullOrEmpty(options.SymbolFile) && string.IsNullOrEmpty(options.Symbols))
+                {
+                    ShowHelp();
+                    Environment.Exit(1);
+                }
             });
 
         rootCommand.Invoke(args);
         return options;
+    }
+
+    private static void ShowHelp()
+    {
+        Console.WriteLine("US Stock Price Downloader");
+        Console.WriteLine();
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  dotnet run -- [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -s, --sp500       Use S&P 500 symbols");
+        Console.WriteLine("  -n, --nyd         Use NY Dow symbols");
+        Console.WriteLine("  -b, --buffett     Use Buffett's portfolio symbols");
+        Console.WriteLine("  -f, --file        Path to the symbol file");
+        Console.WriteLine("  --symbols         Comma-separated list of stock symbols");
+        Console.WriteLine("  -p, --parallel    Maximum number of concurrent downloads (default: 3)");
+        Console.WriteLine("  -r, --retries     Maximum number of retries (default: 3)");
+        Console.WriteLine("  -d, --delay       Retry delay in milliseconds (default: 1000)");
+        Console.WriteLine("  -e, --exponential Use exponential backoff for retries (default: true)");
+        Console.WriteLine("  --start-date      Start date for historical data (format: yyyy-MM-dd)");
+        Console.WriteLine("  --end-date        End date for historical data (format: yyyy-MM-dd)");
+        Console.WriteLine("  -o, --output      Output directory for the downloaded data");
+        Console.WriteLine();
+        Console.WriteLine("Examples:");
+        Console.WriteLine("  dotnet run -- --sp500");
+        Console.WriteLine("  dotnet run -- --nyd");
+        Console.WriteLine("  dotnet run -- --buffett");
+        Console.WriteLine("  dotnet run -- --file symbols.txt");
+        Console.WriteLine("  dotnet run -- --symbols AAPL,MSFT,GOOGL");
+        Console.WriteLine("  dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31");
+        Console.WriteLine("  dotnet run -- --symbols AAPL --output \"C:\\stock\\data\"");
+        Console.WriteLine();
+        Console.WriteLine("Note: At least one of --sp500, --nyd, --buffett, --file, or --symbols must be specified.");
     }
 
     public void Validate()
