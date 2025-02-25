@@ -17,6 +17,30 @@ class Program
             return;
         }
 
+        // .NET Runtimeのチェックとインストール
+        if (!DotNetRuntimeChecker.IsRequiredRuntimeInstalled())
+        {
+            Console.WriteLine("必要な .NET Runtime がインストールされていません。");
+            Console.WriteLine("Required .NET Runtime is not installed.");
+
+            if (await DotNetRuntimeChecker.InstallRuntimeAsync())
+            {
+                Console.WriteLine("アプリケーションを再起動します...");
+                Console.WriteLine("Restarting application...");
+                DotNetRuntimeChecker.RestartApplication(args);
+                return;
+            }
+            else
+            {
+                Console.WriteLine("必要な .NET Runtime のインストールに失敗しました。");
+                Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0");
+                Console.WriteLine("Failed to install required .NET Runtime.");
+                Console.WriteLine("Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0");
+                Environment.ExitCode = 1;
+                return;
+            }
+        }
+
         var services = new ServiceCollection();
 
         // ロギング設定
