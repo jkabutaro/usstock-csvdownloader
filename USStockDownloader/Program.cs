@@ -25,6 +25,7 @@ class Program
         services.AddSingleton<IndexSymbolService>();
         services.AddSingleton<SP500CacheService>();
         services.AddSingleton<NYDCacheService>();
+        services.AddSingleton<BuffettCacheService>();
         services.AddSingleton<StockDownloadManager>();
         services.AddSingleton<RetryOptions>();
 
@@ -33,6 +34,7 @@ class Program
         // コマンドライン引数の設定
         var sp500Option = new Option<bool>("--sp500", "Download S&P 500 stocks");
         var nydOption = new Option<bool>("--nyd", "Download NY Dow stocks");
+        var buffettOption = new Option<bool>("--buffett", "Download Buffett's portfolio stocks");
         var fileOption = new Option<string?>("--file", "File containing stock symbols");
         var maxConcurrentOption = new Option<int>("--max-concurrent", () => 3, "Maximum number of concurrent downloads");
         var maxRetriesOption = new Option<int>("--max-retries", () => 3, "Maximum number of retry attempts");
@@ -42,13 +44,14 @@ class Program
         var rootCommand = new RootCommand("US Stock Price Downloader");
         rootCommand.AddOption(sp500Option);
         rootCommand.AddOption(nydOption);
+        rootCommand.AddOption(buffettOption);
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(maxConcurrentOption);
         rootCommand.AddOption(maxRetriesOption);
         rootCommand.AddOption(retryDelayOption);
         rootCommand.AddOption(exponentialBackoffOption);
 
-        rootCommand.SetHandler(async (bool sp500, bool nyd, string? file, int maxConcurrent, int maxRetries, int retryDelay, bool exponentialBackoff) =>
+        rootCommand.SetHandler(async (bool sp500, bool nyd, bool buffett, string? file, int maxConcurrent, int maxRetries, int retryDelay, bool exponentialBackoff) =>
         {
             try
             {
@@ -56,6 +59,7 @@ class Program
                 {
                     UseSP500 = sp500,
                     UseNYD = nyd,
+                    UseBuffett = buffett,
                     SymbolFile = file,
                     MaxConcurrentDownloads = maxConcurrent,
                     MaxRetries = maxRetries,
@@ -72,7 +76,7 @@ class Program
                 logger.LogError(ex, "An error occurred while downloading stock data");
                 Environment.ExitCode = 1;
             }
-        }, sp500Option, nydOption, fileOption, maxConcurrentOption, maxRetriesOption, retryDelayOption, exponentialBackoffOption);
+        }, sp500Option, nydOption, buffettOption, fileOption, maxConcurrentOption, maxRetriesOption, retryDelayOption, exponentialBackoffOption);
 
         await rootCommand.InvokeAsync(args);
     }

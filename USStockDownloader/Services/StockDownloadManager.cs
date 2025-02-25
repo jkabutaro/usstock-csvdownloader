@@ -18,41 +18,60 @@ public class StockDownloadManager
 {
     private readonly IStockDataService _stockDataService;
     private readonly IndexSymbolService _indexSymbolService;
+    private readonly SP500CacheService _sp500CacheService;
+    private readonly NYDCacheService _nydCacheService;
+    private readonly BuffettCacheService _buffettCacheService;
     private readonly ILogger<StockDownloadManager> _logger;
     private SemaphoreSlim _semaphore;
 
     public StockDownloadManager(
+        ILogger<StockDownloadManager> logger,
         IStockDataService stockDataService,
         IndexSymbolService indexSymbolService,
-        ILogger<StockDownloadManager> logger)
+        SP500CacheService sp500CacheService,
+        NYDCacheService nydCacheService,
+        BuffettCacheService buffettCacheService)
     {
+        _logger = logger;
         _stockDataService = stockDataService;
         _indexSymbolService = indexSymbolService;
-        _logger = logger;
+        _sp500CacheService = sp500CacheService;
+        _nydCacheService = nydCacheService;
+        _buffettCacheService = buffettCacheService;
         _semaphore = new SemaphoreSlim(3); // デフォルトの並列数
     }
 
     public async Task DownloadStockDataAsync(DownloadOptions options)
     {
-        List<string> symbols;
+        List<string> symbols = new List<string>();
         if (options.UseSP500)
         {
             symbols = await _indexSymbolService.GetSP500Symbols();
             _logger.LogInformation("Loaded {Count} S&P 500 symbols", symbols.Count);
         }
-        else if (options.UseNYD)
+
+        if (options.UseNYD)
         {
-            symbols = await _indexSymbolService.GetNYDSymbols();
-            _logger.LogInformation("Loaded {Count} NY Dow symbols", symbols.Count);
+            var nydSymbols = await _nydCacheService.GetSymbolsAsync();
+            symbols.AddRange(nydSymbols);
         }
-        else if (!string.IsNullOrEmpty(options.SymbolFile))
+
+        if (options.UseBuffett)
         {
-            symbols = (await File.ReadAllLinesAsync(options.SymbolFile)).ToList();
-            _logger.LogInformation("Loaded {Count} symbols from file: {File}", symbols.Count, options.SymbolFile);
+            var buffettSymbols = await _buffettCacheService.GetSymbolsAsync();
+            symbols.AddRange(buffettSymbols);
         }
-        else
+
+        if (!string.IsNullOrEmpty(options.SymbolFile))
         {
-            throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, or --file");
+            var fileSymbols = (await File.ReadAllLinesAsync(options.SymbolFile)).ToList();
+            symbols.AddRange(fileSymbols);
+            _logger.LogInformation("Loaded {Count} symbols from file: {File}", fileSymbols.Count, options.SymbolFile);
+        }
+
+        if (symbols.Count == 0)
+        {
+            throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, --buffett, or --file");
         }
 
         _semaphore = new SemaphoreSlim(options.MaxConcurrentDownloads);
