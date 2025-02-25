@@ -11,6 +11,7 @@ using Polly.Retry;
 using CsvHelper;
 using System.Globalization;
 using System.Collections.Concurrent;
+using USStockDownloader.Utils;
 
 namespace USStockDownloader.Services;
 
@@ -23,6 +24,7 @@ public class StockDownloadManager
     private readonly BuffettCacheService _buffettCacheService;
     private readonly ILogger<StockDownloadManager> _logger;
     private SemaphoreSlim _semaphore;
+    private static readonly TimeSpan MaxCacheAge = TimeSpan.FromHours(24); // キャッシュの有効期限
 
     public StockDownloadManager(
         ILogger<StockDownloadManager> logger,
@@ -91,6 +93,16 @@ public class StockDownloadManager
     {
         try
         {
+            // キャッシュをチェック
+            var startDate = options.StartDate ?? DateTime.Now.AddYears(-1);
+            var endDate = options.EndDate ?? DateTime.Now;
+
+            if (!StockDataCache.NeedsUpdate(symbol, startDate, endDate, MaxCacheAge))
+            {
+                _logger.LogInformation("Using cached data for {Symbol}", symbol);
+                return;
+            }
+
             await _semaphore.WaitAsync();
             _logger.LogInformation("Starting download for {Symbol}", symbol);
 
@@ -132,6 +144,9 @@ public class StockDownloadManager
             await using var writer = new StreamWriter(filePath);
             await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
             await csv.WriteRecordsAsync(data);
+
+            // キャッシュを更新
+            StockDataCache.UpdateCache(symbol, startDate, endDate);
 
             _logger.LogInformation("Successfully downloaded data for {Symbol}", symbol);
         }
