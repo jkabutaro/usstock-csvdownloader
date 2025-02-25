@@ -16,17 +16,20 @@ public class StockDataService : IStockDataService
     private readonly HttpClient _httpClient;
     private readonly ILogger<StockDataService> _logger;
     private readonly RetryOptions _retryOptions;
+    private readonly DownloadOptions _downloadOptions;
     private const string BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart/";
     private static readonly Regex _symbolPattern = new Regex(@"^[A-Z\-.]+$", RegexOptions.Compiled);
 
     public StockDataService(
         HttpClient httpClient,
         ILogger<StockDataService> logger,
-        RetryOptions retryOptions)
+        RetryOptions retryOptions,
+        DownloadOptions downloadOptions)
     {
         _httpClient = httpClient;
         _logger = logger;
         _retryOptions = retryOptions;
+        _downloadOptions = downloadOptions;
     }
 
     public async Task<List<StockData>> GetStockDataAsync(string symbol)
@@ -47,8 +50,8 @@ public class StockDataService : IStockDataService
         {
             try
             {
-                var endDate = DateTimeOffset.UtcNow;
-                var startDate = endDate.AddYears(-1);
+                var startDate = _downloadOptions.GetStartDate();
+                var endDate = _downloadOptions.GetEndDate();
 
                 var url = $"{BASE_URL}{normalizedSymbol}?period1={ToUnixTimestamp(startDate)}&period2={ToUnixTimestamp(endDate)}&interval=1d";
                 

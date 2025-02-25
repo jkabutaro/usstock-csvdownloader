@@ -15,9 +15,11 @@ public class DownloadOptions
     public int MaxRetries { get; set; } = 3;
     public int RetryDelay { get; set; } = 1000;
     public bool ExponentialBackoff { get; set; } = true;
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
 
-    public DateTime StartDate => DateTime.Now.AddYears(-1);
-    public DateTime EndDate => DateTime.Now;
+    public DateTime GetStartDate() => StartDate ?? DateTime.Now.AddYears(-1);
+    public DateTime GetEndDate() => EndDate ?? DateTime.Now;
 
     public static DownloadOptions Parse(string[] args)
     {
@@ -73,6 +75,14 @@ public class DownloadOptions
             () => true,
             "Use exponential backoff for retries");
 
+        var startDateOption = new Option<DateTime?>(
+            "--start-date",
+            "Start date for historical data (format: yyyy-MM-dd)");
+
+        var endDateOption = new Option<DateTime?>(
+            "--end-date",
+            "End date for historical data (format: yyyy-MM-dd)");
+
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(sp500Option);
         rootCommand.AddOption(sp500ForceOption);
@@ -84,6 +94,8 @@ public class DownloadOptions
         rootCommand.AddOption(retriesOption);
         rootCommand.AddOption(delayOption);
         rootCommand.AddOption(exponentialOption);
+        rootCommand.AddOption(startDateOption);
+        rootCommand.AddOption(endDateOption);
 
         rootCommand.SetHandler(
             (context) =>
@@ -99,6 +111,8 @@ public class DownloadOptions
                 options.MaxRetries = context.ParseResult.GetValueForOption(retriesOption);
                 options.RetryDelay = context.ParseResult.GetValueForOption(delayOption);
                 options.ExponentialBackoff = context.ParseResult.GetValueForOption(exponentialOption);
+                options.StartDate = context.ParseResult.GetValueForOption(startDateOption);
+                options.EndDate = context.ParseResult.GetValueForOption(endDateOption);
             });
 
         rootCommand.Invoke(args);
@@ -112,14 +126,22 @@ public class DownloadOptions
             throw new ArgumentException("Either --file, --sp500, --nyd, --buffett, or --symbols option must be specified");
         }
 
-        if (StartDate > EndDate)
+        var startDate = GetStartDate();
+        var endDate = GetEndDate();
+
+        if (startDate > endDate)
         {
             throw new ArgumentException("Start date must be before end date.");
         }
 
-        if (EndDate > DateTime.Now)
+        if (endDate > DateTime.Now)
         {
             throw new ArgumentException("End date cannot be in the future.");
+        }
+
+        if (startDate < new DateTime(1970, 1, 1))
+        {
+            throw new ArgumentException("Start date cannot be before 1970-01-01.");
         }
 
         if (MaxConcurrentDownloads < 1 || MaxConcurrentDownloads > 10)
@@ -155,7 +177,9 @@ public class DownloadOptions
         Console.WriteLine("  -r, --retries    Maximum number of retries per symbol (default: 3)");
         Console.WriteLine("  -d, --delay      Delay in milliseconds between retries (default: 1000)");
         Console.WriteLine("  -e, --exponential  Use exponential backoff for retries (default: true)");
+        Console.WriteLine("  --start-date     Start date for historical data (format: yyyy-MM-dd)");
+        Console.WriteLine("  --end-date       End date for historical data (format: yyyy-MM-dd)");
         Console.WriteLine();
-        Console.WriteLine("Note: Start date is set to 1 year ago and end date is set to today by default.");
+        Console.WriteLine("Note: If not specified, start date is set to 1 year ago and end date is set to today.");
     }
 }

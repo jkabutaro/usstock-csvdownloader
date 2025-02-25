@@ -30,6 +30,9 @@ dotnet run -- --file symbols.txt
 
 # 個別銘柄の指定（カンマ区切り）
 dotnet run -- --symbols AAPL,MSFT,GOOGL
+
+# 期間を指定してダウンロード（2024年1月1日から2024年12月31日まで）
+dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31
 ```
 
 ## オプション
@@ -39,6 +42,8 @@ dotnet run -- --symbols AAPL,MSFT,GOOGL
 - `--buffett`: バフェットのポートフォリオ銘柄をダウンロード
 - `--file <path>`: 指定したファイルから銘柄リストを読み込み
 - `--symbols <symbols>`: カンマ区切りで個別銘柄を指定（例：AAPL,MSFT,GOOGL）
+- `--start-date <date>`: 履歴データの開始日（形式：yyyy-MM-dd、デフォルト：1年前）
+- `--end-date <date>`: 履歴データの終了日（形式：yyyy-MM-dd、デフォルト：今日）
 - `--max-concurrent <num>`: 並列ダウンロード数（デフォルト: 3）
 - `--max-retries <num>`: リトライ回数（デフォルト: 3）
 - `--retry-delay <ms>`: リトライ間隔（ミリ秒、デフォルト: 1000）
