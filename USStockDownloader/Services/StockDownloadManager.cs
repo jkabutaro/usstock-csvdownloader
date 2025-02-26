@@ -31,7 +31,7 @@ public class StockDownloadManager
 
         var endDate = DateTime.Today;
         var startDate = endDate.AddYears(-1);
-        var outputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output");
+        var outputDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "output"));
         Directory.CreateDirectory(outputDir);
 
         _logger.LogInformation("Date range: {StartDate} to {EndDate}", 
@@ -126,7 +126,10 @@ public class StockDownloadManager
             _logger.LogDebug("Writing data to {OutputPath}", outputPath);
 
             await using var writer = new StreamWriter(outputPath);
-            await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+            await using var csv = new CsvWriter(writer, new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture)
+            {
+                ShouldQuote = args => false
+            });
             await csv.WriteRecordsAsync(stockDataList);
 
             _logger.LogInformation("Successfully saved data for {Symbol}", symbol);
