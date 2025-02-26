@@ -1,3 +1,6 @@
-Symbol,CompanyName
-BRK-B,Berkshire Hathaway Inc. Class B
-BF-B,Brown-Forman Corporation Class B
+AAPL
+MSFT
+GOOGL
+TSLA
+AMZN
+META

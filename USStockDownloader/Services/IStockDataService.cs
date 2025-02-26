@@ -4,5 +4,5 @@ namespace USStockDownloader.Services;
 
 public interface IStockDataService
 {
-    Task<List<StockData>> GetStockDataAsync(string symbol);
+    Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate);
 }

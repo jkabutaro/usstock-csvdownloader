@@ -1,13 +1,10 @@
-using System;
 using System.Net;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using Polly;
 using Polly.Retry;
 using USStockDownloader.Models;
-using USStockDownloader.Options;
 using USStockDownloader.Exceptions;
-using System.Text.RegularExpressions;
 
 namespace USStockDownloader.Services;
 
@@ -15,144 +12,163 @@ public class StockDataService : IStockDataService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<StockDataService> _logger;
-    private readonly RetryOptions _retryOptions;
-    private readonly DownloadOptions _downloadOptions;
-    private const string BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart/";
-    private static readonly Regex _symbolPattern = new Regex(@"^[A-Z\-.]+$", RegexOptions.Compiled);
     private static readonly Random _random = new Random();
+    private readonly AsyncRetryPolicy<List<StockData>> _retryPolicy;
 
-    public StockDataService(
-        HttpClient httpClient,
-        ILogger<StockDataService> logger,
-        RetryOptions retryOptions,
-        DownloadOptions downloadOptions)
+    public StockDataService(HttpClient httpClient, ILogger<StockDataService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _retryOptions = retryOptions;
-        _downloadOptions = downloadOptions;
-
-        // ブラウザのような振る舞いをするためのヘッダー設定
+        
+        // デフォルトのヘッダーを設定
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
         _httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.5");
-        _httpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Dest", "document");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Mode", "navigate");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Site", "none");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-User", "?1");
-        _httpClient.DefaultRequestHeaders.Add("Pragma", "no-cache");
-        _httpClient.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
+
+        // リトライポリシーの設定
+        _retryPolicy = Policy<List<StockData>>
+            .Handle<HttpRequestException>()
+            .Or<DataParsingException>()
+            .WaitAndRetryAsync(
+                3, // 最大リトライ回数
+                retryAttempt => 
+                    TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + // 指数バックオフ
+                    TimeSpan.FromMilliseconds(_random.Next(0, 1000)) // ジッター
+            );
     }
 
-    public async Task<List<StockData>> GetStockDataAsync(string symbol)
+    public async Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate)
     {
-        _logger.LogInformation("DEBUG: Starting GetStockDataAsync for {Symbol}", symbol);
-        if (string.IsNullOrWhiteSpace(symbol))
+        return await _retryPolicy.ExecuteAsync(async (context) =>
         {
-            throw new ArgumentException("Symbol cannot be null or empty", nameof(symbol));
-        }
-
-        var normalizedSymbol = symbol.Trim().ToUpper();
-        if (!_symbolPattern.IsMatch(normalizedSymbol))
-        {
-            throw new InvalidSymbolException($"Invalid symbol format: {symbol}");
-        }
-
-        // リクエスト前に少しランダムな待機を入れる（0.5秒〜1.5秒）
-        await Task.Delay(TimeSpan.FromMilliseconds(500 + _random.Next(1000)));
-
-        var retryPolicy = CreateRetryPolicy();
-        return await retryPolicy.ExecuteAsync(async () =>
-        {
-            _logger.LogInformation("DEBUG: Making request for {Symbol}", symbol);
-            
-            var url = $"{BASE_URL}{normalizedSymbol}?interval=1d&range=1y";
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            
-            // リファラーをランダムに設定
-            request.Headers.Referrer = new Uri("https://finance.yahoo.com/quote/" + normalizedSymbol);
-
-            var response = await _httpClient.SendAsync(request);
-            
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            {
-                _logger.LogWarning("Rate limit hit for symbol {Symbol}", symbol);
-                throw new RateLimitException($"Rate limit exceeded for {symbol}");
-            }
-
-            response.EnsureSuccessStatusCode();
-            var jsonString = await response.Content.ReadAsStringAsync();
+            context["Symbol"] = symbol;
 
             try
             {
-                var data = JsonSerializer.Deserialize<YahooFinanceResponse>(jsonString);
-                if (data?.Chart?.Result == null || data.Chart.Result.Count == 0)
+                _logger.LogInformation("Fetching data for symbol: {Symbol} from {StartDate} to {EndDate}", 
+                    symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+                // ランダムな遅延を追加してレート制限を回避
+                await Task.Delay(TimeSpan.FromMilliseconds(_random.Next(500, 1500)));
+
+                var unixStartTime = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
+                var unixEndTime = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
+
+                _logger.LogDebug("Unix timestamps - Start: {StartTime}, End: {EndTime}", unixStartTime, unixEndTime);
+
+                var url = $"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={unixStartTime}&period2={unixEndTime}&interval=1d";
+                _logger.LogDebug("Request URL: {Url}", url);
+
+                var response = await _httpClient.GetAsync(url);
+                _logger.LogDebug("Response status code: {StatusCode}", response.StatusCode);
+
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 {
-                    throw new NoDataException($"No data available for symbol {symbol}");
+                    _logger.LogWarning("Rate limit hit for symbol {Symbol}", symbol);
+                    throw new RateLimitException($"Rate limit exceeded for {symbol}");
                 }
 
-                var result = data.Chart.Result[0];
-                if (result.Timestamp == null || result.Indicators?.Quote == null || result.Indicators.Quote.Count == 0)
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("Response content length: {Length} bytes", content.Length);
+
+                var yahooResponse = JsonSerializer.Deserialize<YahooFinanceResponse>(content);
+                if (yahooResponse?.Chart?.Result == null || !yahooResponse.Chart.Result.Any())
                 {
-                    throw new NoDataException($"Incomplete data for symbol {symbol}");
+                    _logger.LogError("No data returned for symbol {Symbol}", symbol);
+                    throw new DataParsingException($"No data returned for {symbol}");
+                }
+
+                var result = yahooResponse.Chart.Result[0];
+                if (result.Timestamp == null || result.Indicators?.Quote == null || !result.Indicators.Quote.Any())
+                {
+                    _logger.LogError("Invalid data structure for symbol {Symbol}", symbol);
+                    throw new DataParsingException($"Invalid data structure for {symbol}");
                 }
 
                 var quote = result.Indicators.Quote[0];
+                if (quote.High == null || quote.Low == null || quote.Open == null || quote.Close == null || quote.Volume == null)
+                {
+                    _logger.LogError("Missing price data for symbol {Symbol}", symbol);
+                    throw new DataParsingException($"Missing price data for {symbol}");
+                }
+
                 var stockDataList = new List<StockData>();
 
                 for (int i = 0; i < result.Timestamp.Count; i++)
                 {
-                    if (quote.High?[i] == null || quote.Low?[i] == null || 
-                        quote.Open?[i] == null || quote.Close?[i] == null || 
+                    if (quote.Open?[i] == null || quote.High?[i] == null || 
+                        quote.Low?[i] == null || quote.Close?[i] == null || 
                         quote.Volume?[i] == null)
                     {
                         continue;
                     }
 
-                    var dateTime = DateTimeOffset.FromUnixTimeSeconds(result.Timestamp[i]).DateTime;
-                    stockDataList.Add(new StockData
+                    var stockData = new StockData
                     {
                         Symbol = symbol,
-                        Date = dateTime,
+                        Date = DateTimeOffset.FromUnixTimeSeconds(result.Timestamp[i] ?? 0).Date,
                         Open = quote.Open[i].Value,
                         High = quote.High[i].Value,
                         Low = quote.Low[i].Value,
                         Close = quote.Close[i].Value,
                         Volume = quote.Volume[i].Value
-                    });
+                    };
+
+                    // データの検証
+                    if (ValidateStockData(stockData))
+                    {
+                        stockDataList.Add(stockData);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Invalid data point for {Symbol} at {Date}", symbol, stockData.Date);
+                    }
                 }
+
+                if (!stockDataList.Any())
+                {
+                    throw new DataParsingException($"No valid data points found for {symbol}");
+                }
+
+                _logger.LogInformation("Successfully fetched {Count} data points for {Symbol}", 
+                    stockDataList.Count, symbol);
 
                 return stockDataList;
             }
-            catch (JsonException ex)
+            catch (Exception ex) when (ex is not RateLimitException)
             {
-                _logger.LogError(ex, "Failed to parse JSON response for symbol {Symbol}", symbol);
-                throw new DataParsingException($"Failed to parse data for {symbol}", ex);
+                _logger.LogError(ex, "Error fetching data for symbol {Symbol}", symbol);
+                throw;
             }
-        });
+        }, new Context());
     }
 
-    private AsyncRetryPolicy<List<StockData>> CreateRetryPolicy()
+    private bool ValidateStockData(StockData data)
     {
-        return Policy<List<StockData>>
-            .Handle<HttpRequestException>()
-            .Or<JsonException>()
-            .Or<NoDataException>()
-            .WaitAndRetryAsync(
-                _retryOptions.MaxRetries,
-                retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + // 指数バックオフ
-                               TimeSpan.FromMilliseconds(_random.Next(100)), // ジッター
-                onRetry: (exception, timeSpan, retryCount, context) =>
-                {
-                    _logger.LogWarning(
-                        exception,
-                        "Retry {RetryCount} after {DelaySeconds}s for error: {ErrorMessage}",
-                        retryCount,
-                        timeSpan.TotalSeconds,
-                        exception.Message);
-                }
-            );
+        // 基本的なデータ検証
+        if (data.Open <= 0 || data.High <= 0 || data.Low <= 0 || data.Close <= 0 || data.Volume <= 0)
+        {
+            _logger.LogWarning("Invalid price or volume values for {Symbol} at {Date}", data.Symbol, data.Date);
+            return false;
+        }
+
+        // High/Low の関係チェック
+        if (data.High < data.Low)
+        {
+            _logger.LogWarning("High price is lower than low price for {Symbol} at {Date}", data.Symbol, data.Date);
+            return false;
+        }
+
+        // Open/Close が High/Low の範囲内にあることを確認
+        if (data.Open > data.High || data.Open < data.Low || 
+            data.Close > data.High || data.Close < data.Low)
+        {
+            _logger.LogWarning("Open/Close prices are outside High/Low range for {Symbol} at {Date}", data.Symbol, data.Date);
+            return false;
+        }
+
+        return true;
     }
 }
