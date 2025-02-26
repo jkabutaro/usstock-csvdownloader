@@ -81,12 +81,12 @@ dotnet run -- --file symbols.txt --max-retries 5 --retry-delay 5000 --concurrent
 #### CSVファイル形式
 ```csv
 Date,Open,High,Low,Close,AdjClose,Volume
-2024-02-25,180.15,182.34,179.89,181.56,181.56,75234567
+20240225,180.15,182.34,179.89,181.56,181.56,75234567
 ```
 
 | カラム | 説明 | 型 |
 |--------|------|-----|
-| Date | 取引日（yyyy-MM-dd形式） | 日付 |
+| Date | 取引日（yyyymmdd形式の整数値） | 整数 |
 | Open | 始値 | 数値 |
 | High | 高値 | 数値 |
 | Low | 安値 | 数値 |
