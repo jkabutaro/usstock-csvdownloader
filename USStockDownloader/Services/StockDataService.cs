@@ -34,6 +34,7 @@ public class StockDataService : IStockDataService
 
     public async Task<List<StockData>> GetStockDataAsync(string symbol)
     {
+        _logger.LogInformation("DEBUG: Starting GetStockDataAsync for {Symbol}", symbol);
         if (string.IsNullOrWhiteSpace(symbol))
         {
             throw new ArgumentException("Symbol cannot be null or empty", nameof(symbol));
@@ -50,6 +51,7 @@ public class StockDataService : IStockDataService
         {
             try
             {
+                _logger.LogInformation("DEBUG: Making request for {Symbol}", symbol);
                 var startDate = _downloadOptions.GetStartDate();
                 var endDate = _downloadOptions.GetEndDate();
 
@@ -59,11 +61,13 @@ public class StockDataService : IStockDataService
                 
                 if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 {
+                    _logger.LogInformation("DEBUG: Rate limit detected for {Symbol}", symbol);
                     _logger.LogWarning("Rate limit hit for symbol {Symbol}", symbol);
                     throw new RateLimitException($"Rate limit exceeded for {symbol}");
                 }
 
                 response.EnsureSuccessStatusCode();
+                _logger.LogInformation("DEBUG: Successfully got response for {Symbol}", symbol);
                 var content = await response.Content.ReadAsStringAsync();
 
                 using var document = JsonDocument.Parse(content);
@@ -103,6 +107,11 @@ public class StockDataService : IStockDataService
 
                 return stockData;
             }
+            catch (RateLimitException)
+            {
+                // レート制限例外はそのまま上位に伝播させる
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get stock data for {Symbol}", symbol);
@@ -114,28 +123,26 @@ public class StockDataService : IStockDataService
     private AsyncRetryPolicy<List<StockData>> CreateRetryPolicy()
     {
         return Policy<List<StockData>>
-            .Handle<RateLimitException>()
-            .Or<HttpRequestException>(ex => ex.StatusCode == HttpStatusCode.TooManyRequests)
+            .Handle<HttpRequestException>(ex => ex.StatusCode != HttpStatusCode.TooManyRequests)
+            .Or<JsonException>()
             .WaitAndRetryAsync(
-                _retryOptions.MaxRetries,
-                retryAttempt =>
+                3,
+                attempt =>
                 {
-                    var delay = CalculateDelay(retryAttempt);
-                    _logger.LogInformation(
-                        "Calculating delay for attempt {RetryAttempt}: base={BaseDelay}, actual={ActualDelay}",
-                        retryAttempt,
-                        _retryOptions.RetryDelay,
-                        delay);
-                    return TimeSpan.FromMilliseconds(delay);
+                    var baseDelay = TimeSpan.FromSeconds(1);
+                    var delay = TimeSpan.FromMilliseconds(baseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
+                    var jitter = Random.Shared.Next(0, 1000);
+                    var actualDelay = delay + TimeSpan.FromMilliseconds(jitter);
+                    _logger.LogInformation("Calculating delay for attempt {Attempt}: base={BaseMs}, actual={ActualMs}",
+                        attempt, baseDelay.TotalMilliseconds, actualDelay.TotalMilliseconds);
+                    return actualDelay;
                 },
                 (exception, timeSpan, retryCount, _) =>
                 {
-                    _logger.LogWarning(
-                        "Rate limit hit. Retry attempt {RetryAttempt} of {MaxRetries}. Waiting {Delay}ms before next attempt",
-                        retryCount,
-                        _retryOptions.MaxRetries,
-                        timeSpan.TotalMilliseconds);
-                });
+                    _logger.LogWarning("Error occurred. Retry attempt {RetryCount} of 3. Waiting {DelayMs}ms before next attempt",
+                        retryCount, timeSpan.TotalMilliseconds);
+                }
+            );
     }
 
     private int CalculateDelay(int retryAttempt)

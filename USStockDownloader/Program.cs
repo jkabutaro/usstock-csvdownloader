@@ -7,6 +7,9 @@ using System.Runtime.Versioning;
 using USStockDownloader.Options;
 using USStockDownloader.Services;
 using USStockDownloader.Utils;
+using Serilog;
+using Serilog.Events;
+using System.IO;
 
 namespace USStockDownloader
 {
@@ -78,29 +81,46 @@ namespace USStockDownloader
                 });
             }
 
-            var services = new ServiceCollection();
+            var builder = new ServiceCollection();
 
-            // ロギング設定
-            services.AddLogging(builder =>
+            // ログディレクトリの作成
+            var logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+            Directory.CreateDirectory(logDir);
+
+            // ログファイル名（タイムスタンプ付き）
+            var logFileName = Path.Combine(logDir, $"usstock_downloader_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+
+            // Serilogの設定
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                .WriteTo.Console()
+                .WriteTo.File(logFileName,
+                    rollingInterval: RollingInterval.Infinite,  // 日付による自動ローテーションを無効化（既にファイル名に日付が含まれるため）
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+                .CreateLogger();
+
+            // Serilogをログプロバイダーとして追加
+            builder.AddLogging(loggingBuilder =>
             {
-                builder.AddConsole();
-                builder.SetMinimumLevel(LogLevel.Information);
+                loggingBuilder.ClearProviders();
+                loggingBuilder.AddSerilog(dispose: true);
             });
 
             // HTTPクライアント設定
-            services.AddHttpClient();
+            builder.AddHttpClient();
 
             // サービス登録
-            services.AddSingleton<IStockDataService, StockDataService>();
-            services.AddSingleton<IndexSymbolService>();
-            services.AddSingleton<SP500CacheService>();
-            services.AddSingleton<NYDCacheService>();
-            services.AddSingleton<BuffettCacheService>();
-            services.AddSingleton<StockDownloadManager>();
-            services.AddSingleton<DownloadOptions>();
-            services.AddSingleton(new RetryOptions());  // デフォルト値で登録
+            builder.AddSingleton<IStockDataService, StockDataService>();
+            builder.AddSingleton<IndexSymbolService>();
+            builder.AddSingleton<SP500CacheService>();
+            builder.AddSingleton<NYDCacheService>();
+            builder.AddSingleton<BuffettCacheService>();
+            builder.AddSingleton<StockDownloadManager>();
+            builder.AddSingleton<DownloadOptions>();
+            builder.AddSingleton(new RetryOptions());  // デフォルト値で登録
 
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = builder.BuildServiceProvider();
 
             // コマンドライン引数の設定
             var sp500Option = new Option<bool>("--sp500", "Download S&P 500 stocks");

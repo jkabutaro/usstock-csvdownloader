@@ -12,6 +12,7 @@ using CsvHelper;
 using System.Globalization;
 using System.Collections.Concurrent;
 using USStockDownloader.Utils;
+using USStockDownloader.Exceptions;
 
 namespace USStockDownloader.Services;
 
@@ -45,6 +46,7 @@ public class StockDownloadManager
 
     public async Task DownloadStockDataAsync(DownloadOptions options)
     {
+        _logger.LogInformation("DEBUG: Starting DownloadStockDataAsync");
         List<string> symbols = new List<string>();
         if (options.UseSP500)
         {
@@ -85,8 +87,55 @@ public class StockDownloadManager
         }
 
         _semaphore = new SemaphoreSlim(options.MaxConcurrentDownloads);
-        var tasks = symbols.Select(symbol => DownloadSymbolDataAsync(symbol, options)).ToList();
-        await Task.WhenAll(tasks);
+        
+        // 最初に1つの銘柄でテスト
+        if (symbols.Count > 0)
+        {
+            _logger.LogInformation("DEBUG: Starting rate limit test");
+            try
+            {
+                var testSymbol = symbols[0];
+                _logger.LogInformation("Testing rate limit with symbol: {Symbol}", testSymbol);
+                _logger.LogInformation("DEBUG: Before GetStockDataAsync call");
+                await _stockDataService.GetStockDataAsync(testSymbol);
+                _logger.LogInformation("DEBUG: After GetStockDataAsync call - No rate limit hit");
+            }
+            catch (RateLimitException)
+            {
+                _logger.LogInformation("DEBUG: Rate limit exception caught");
+                _logger.LogError("レート制限に達しています。しばらく待ってから再実行してください。");
+                _logger.LogError("Rate limit reached. Please wait for a while before trying again.");
+                Console.WriteLine("\n===================================================");
+                Console.WriteLine("⚠️ レート制限に達しています ⚠️");
+                Console.WriteLine("Yahoo Finance APIのレート制限に達しています。");
+                Console.WriteLine("少なくとも15分以上待ってから再実行してください。");
+                Console.WriteLine("\n⚠️ Rate limit reached ⚠️");
+                Console.WriteLine("Yahoo Finance API rate limit has been reached.");
+                Console.WriteLine("Please wait at least 15 minutes before trying again.");
+                Console.WriteLine("===================================================\n");
+                _logger.LogInformation("DEBUG: About to exit program");
+                Environment.Exit(1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation("DEBUG: Other exception caught: {ExType}", ex.GetType().Name);
+                throw;
+            }
+            _logger.LogInformation("DEBUG: After try-catch block");
+        }
+
+        try
+        {
+            _logger.LogInformation("DEBUG: Starting main download loop");
+            var tasks = symbols.Select(symbol => DownloadSymbolDataAsync(symbol, options)).ToList();
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to download stock data");
+            throw;
+        }
+        _logger.LogInformation("DEBUG: End of DownloadStockDataAsync");
     }
 
     private async Task DownloadSymbolDataAsync(string symbol, DownloadOptions options)
@@ -106,58 +155,50 @@ public class StockDownloadManager
             await _semaphore.WaitAsync();
             _logger.LogInformation("Starting download for {Symbol}", symbol);
 
-            var retryPolicy = Policy<List<StockData>>
-                .Handle<Exception>()
-                .WaitAndRetryAsync(
-                    options.MaxRetries,
-                    retryAttempt => 
-                    {
-                        var baseDelay = options.ExponentialBackoff
-                            ? options.RetryDelay * Math.Pow(2, retryAttempt - 1)
-                            : options.RetryDelay;
-                        return TimeSpan.FromMilliseconds(baseDelay) + 
-                               TimeSpan.FromMilliseconds(new Random().Next(0, 1000));
-                    },
-                    (exception, timeSpan, retryCount, _) =>
-                    {
-                        _logger.LogWarning(
-                            "Retry attempt {RetryAttempt} of {MaxRetries} for {Symbol}. Waiting {Delay}ms before next attempt",
-                            retryCount,
-                            options.MaxRetries,
-                            symbol,
-                            timeSpan.TotalMilliseconds);
-                    });
-
-            var data = await retryPolicy.ExecuteAsync(async () =>
+            try
             {
-                var result = await _stockDataService.GetStockDataAsync(symbol);
-                if (result == null || !result.Any())
+                var data = await _stockDataService.GetStockDataAsync(symbol);
+                
+                if (data == null || !data.Any())
                 {
-                    throw new Exception($"No data available for {symbol}");
+                    _logger.LogWarning("No data available for {Symbol}", symbol);
+                    return;
                 }
-                return result;
-            });
+                
+                var outputDirectory = string.IsNullOrEmpty(options.OutputDirectory) ? "Data" : options.OutputDirectory;
+                var filePath = Path.Combine(outputDirectory, $"{symbol}.csv");
+                Directory.CreateDirectory(outputDirectory);
 
-            var outputDirectory = string.IsNullOrEmpty(options.OutputDirectory) ? "Data" : options.OutputDirectory;
-            var filePath = Path.Combine(outputDirectory, $"{symbol}.csv");
-            Directory.CreateDirectory(outputDirectory);
+                await using var writer = new StreamWriter(filePath);
+                await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+                await csv.WriteRecordsAsync(data);
 
-            await using var writer = new StreamWriter(filePath);
-            await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-            await csv.WriteRecordsAsync(data);
+                // キャッシュを更新
+                StockDataCache.UpdateCache(symbol, startDate, endDate);
 
-            // キャッシュを更新
-            StockDataCache.UpdateCache(symbol, startDate, endDate);
-
-            _logger.LogInformation("Successfully downloaded data for {Symbol}", symbol);
+                _logger.LogInformation("Successfully downloaded data for {Symbol}", symbol);
+            }
+            catch (RateLimitException ex)
+            {
+                _logger.LogError(ex, "Rate limit exceeded for {Symbol}", symbol);
+                throw; // 上位のハンドラに伝播させる
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to download data for {Symbol}", symbol);
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to download data for {Symbol}", symbol);
-        }
-        finally
-        {
-            _semaphore.Release();
+            if (ex is RateLimitException)
+            {
+                throw; // レート制限例外は上位に伝播させる
+            }
         }
     }
 }
