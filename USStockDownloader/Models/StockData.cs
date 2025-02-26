@@ -14,6 +14,7 @@ public class StockData
     [Ignore]
     public DateTime DateTime { get; set; }
     
+    [Ignore]
     public int DateNumber => DateTime.Year * 10000 + DateTime.Month * 100 + DateTime.Day;
 
     [Name("Open")]
