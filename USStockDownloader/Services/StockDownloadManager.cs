@@ -5,6 +5,7 @@ using System.Globalization;
 using USStockDownloader.Models;
 using USStockDownloader.Exceptions;
 using System.IO;
+using USStockDownloader.Utils;
 
 namespace USStockDownloader.Services;
 
@@ -118,6 +119,16 @@ public class StockDownloadManager
     private async Task ProcessSymbolAsync(string symbol, DateTime startDate, DateTime endDate, string outputDir)
     {
         _logger.LogInformation("Processing symbol: {Symbol}", symbol);
+        
+        // キャッシュをチェック - 更新が必要かどうか確認
+        var needsUpdate = StockDataCache.NeedsUpdate(symbol, startDate, endDate, TimeSpan.FromHours(1));
+        
+        if (!needsUpdate)
+        {
+            _logger.LogInformation("Using cached data for {Symbol}", symbol);
+            return; // キャッシュが有効なら処理をスキップ
+        }
+        
         var stockDataList = await _stockDataService.GetStockDataAsync(symbol, startDate, endDate);
 
         if (stockDataList.Any())
@@ -133,6 +144,9 @@ public class StockDownloadManager
             await csv.WriteRecordsAsync(stockDataList);
 
             _logger.LogInformation("Successfully saved data for {Symbol}", symbol);
+            
+            // キャッシュを更新
+            StockDataCache.UpdateCache(symbol, startDate, endDate);
         }
         else
         {
