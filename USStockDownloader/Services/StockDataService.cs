@@ -105,10 +105,12 @@ public class StockDataService : IStockDataService
                         continue;
                     }
 
+                    var dateTime = DateTimeOffset.FromUnixTimeSeconds(result.Timestamp[i] ?? 0).Date;
                     var stockData = new StockData
                     {
                         Symbol = symbol,
-                        Date = DateTimeOffset.FromUnixTimeSeconds(result.Timestamp[i] ?? 0).Date,
+                        DateTime = dateTime,
+                        Date = dateTime.Year * 10000 + dateTime.Month * 100 + dateTime.Day,
                         Open = quote.Open[i].Value,
                         High = quote.High[i].Value,
                         Low = quote.Low[i].Value,
@@ -123,7 +125,7 @@ public class StockDataService : IStockDataService
                     }
                     else
                     {
-                        _logger.LogWarning("Invalid data point for {Symbol} at {Date}", symbol, stockData.Date);
+                        _logger.LogWarning("Invalid data point for {Symbol} at {Date}", symbol, stockData.DateTime);
                     }
                 }
 
@@ -150,14 +152,14 @@ public class StockDataService : IStockDataService
         // 基本的なデータ検証
         if (data.Open <= 0 || data.High <= 0 || data.Low <= 0 || data.Close <= 0 || data.Volume <= 0)
         {
-            _logger.LogWarning("Invalid price or volume values for {Symbol} at {Date}", data.Symbol, data.Date);
+            _logger.LogWarning("Invalid price or volume values for {Symbol} at {Date}", data.Symbol, data.DateTime);
             return false;
         }
 
         // High/Low の関係チェック
         if (data.High < data.Low)
         {
-            _logger.LogWarning("High price is lower than low price for {Symbol} at {Date}", data.Symbol, data.Date);
+            _logger.LogWarning("High price is lower than low price for {Symbol} at {Date}", data.Symbol, data.DateTime);
             return false;
         }
 
@@ -165,7 +167,7 @@ public class StockDataService : IStockDataService
         if (data.Open > data.High || data.Open < data.Low || 
             data.Close > data.High || data.Close < data.Low)
         {
-            _logger.LogWarning("Open/Close prices are outside High/Low range for {Symbol} at {Date}", data.Symbol, data.Date);
+            _logger.LogWarning("Open/Close prices are outside High/Low range for {Symbol} at {Date}", data.Symbol, data.DateTime);
             return false;
         }
 
