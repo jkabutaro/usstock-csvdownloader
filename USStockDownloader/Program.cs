@@ -87,41 +87,75 @@ namespace USStockDownloader
 
                 var logger = serviceProvider.GetService<ILogger<Program>>();
                 var downloadManager = serviceProvider.GetRequiredService<StockDownloadManager>();
-                var sp500Service = serviceProvider.GetRequiredService<SP500CacheService>();
 
                 // コマンドライン引数の解析
-                var symbolFile = GetSymbolFileFromArgs(args);
-                var useSP500 = args.Contains("--sp500");
-
-                if (!useSP500 && string.IsNullOrEmpty(symbolFile))
-                {
-                    Console.WriteLine("Error: No symbol file specified.");
-                    Console.WriteLine("Usage: dotnet run -- --file <symbol_file>");
-                    Console.WriteLine("   or: dotnet run -- --sp500");
-                    return;
-                }
+                var options = DownloadOptions.Parse(args);
 
                 List<string> symbols;
-                if (useSP500)
+                var symbolProvider = serviceProvider.GetRequiredService<SymbolListProvider>();
+
+                try
                 {
-                    Console.WriteLine("Fetching S&P 500 symbols...");
-                    symbols = (await sp500Service.GetSymbolsAsync()).ToList();
-                    Console.WriteLine($"Found {symbols.Count} S&P 500 symbols.");
+                    if (options.UseSP500)
+                    {
+                        Console.WriteLine("Fetching S&P 500 symbols...");
+                        if (options.ForceSP500Update)
+                        {
+                            Console.WriteLine("Forcing update of S&P 500 symbols...");
+                            await serviceProvider.GetRequiredService<SP500CacheService>().ForceUpdateAsync();
+                        }
+                        symbols = await symbolProvider.GetSymbolsAsync(true, false, false, null);
+                    }
+                    else if (options.UseNYD)
+                    {
+                        Console.WriteLine("Fetching NY Dow symbols...");
+                        var nydService = serviceProvider.GetRequiredService<NYDCacheService>();
+                        if (options.ForceNYDUpdate)
+                        {
+                            Console.WriteLine("Forcing update of NY Dow symbols...");
+                            await nydService.ForceUpdateAsync();
+                        }
+                        symbols = await symbolProvider.GetSymbolsAsync(false, true, false, null);
+                    }
+                    else if (options.UseBuffett)
+                    {
+                        Console.WriteLine("Fetching Buffett portfolio symbols...");
+                        var buffettService = serviceProvider.GetRequiredService<BuffettCacheService>();
+                        if (options.ForceBuffettUpdate)
+                        {
+                            Console.WriteLine("Forcing update of Buffett portfolio symbols...");
+                            await buffettService.ForceUpdateAsync();
+                        }
+                        symbols = await symbolProvider.GetSymbolsAsync(false, false, true, null);
+                    }
+                    else if (!string.IsNullOrEmpty(options.SymbolFile))
+                    {
+                        Console.WriteLine($"Symbol file: {options.SymbolFile}");
+                        symbols = await symbolProvider.GetSymbolsAsync(false, false, false, options.SymbolFile);
+                    }
+                    else if (!string.IsNullOrEmpty(options.Symbols))
+                    {
+                        Console.WriteLine($"Using provided symbols: {options.Symbols}");
+                        symbols = options.Symbols.Split(',').Select(s => s.Trim()).ToList();
+                    }
+                    else
+                    {
+                        Console.WriteLine("No symbols specified. Use --sp500, --nyd, --buffett, --file, or --symbols.");
+                        return;
+                    }
+
+                    Console.WriteLine($"Found {symbols.Count} symbols.");
+                    Console.WriteLine("Starting download process...");
+
+                    await downloadManager.DownloadStockDataAsync(symbols);
+
+                    Console.WriteLine("Download process completed.");
                 }
-                else
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Symbol file argument: {symbolFile}");
-                    Console.WriteLine("Reading symbols from file...");
-                    symbols = (await File.ReadAllLinesAsync(symbolFile)).ToList();
-                    Console.WriteLine($"Found {symbols.Count} symbols in file.");
+                    Console.WriteLine($"Error: {ex.Message}");
+                    Environment.ExitCode = 1;
                 }
-
-                Console.WriteLine("Download manager initialized.");
-                Console.WriteLine("Starting download process...");
-
-                await downloadManager.DownloadStockDataAsync(symbols);
-
-                Console.WriteLine("Download process completed.");
             }
             catch (Exception ex)
             {
@@ -156,22 +190,16 @@ namespace USStockDownloader
             services.AddTransient<IStockDataService, StockDataService>();
             services.AddTransient<StockDownloadManager>();
             services.AddSingleton<SP500CacheService>();
+            services.AddSingleton<NYDCacheService>();
+            services.AddSingleton<BuffettCacheService>();
+            services.AddSingleton<IndexSymbolService>();
+            services.AddSingleton<SymbolListProvider>();
             Console.WriteLine("Services registered.");
 
             var serviceProvider = services.BuildServiceProvider();
             Console.WriteLine("Service provider built.");
 
             return serviceProvider;
-        }
-
-        private static string GetSymbolFileFromArgs(string[] args)
-        {
-            var fileIndex = Array.IndexOf(args, "--file");
-            if (fileIndex >= 0 && fileIndex < args.Length - 1)
-            {
-                return args[fileIndex + 1];
-            }
-            return string.Empty;
         }
     }
 }

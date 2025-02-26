@@ -19,7 +19,7 @@ public class SymbolListProvider
         _logger = logger;
     }
 
-    public async Task<List<string>> GetSymbolsAsync(bool useSP500, bool useNYD, string? symbolFile)
+    public async Task<List<string>> GetSymbolsAsync(bool useSP500, bool useNYD, bool useBuffett, string? symbolFile)
     {
         if (useSP500)
         {
@@ -32,6 +32,13 @@ public class SymbolListProvider
         {
             var symbols = await _indexSymbolService.GetNYDSymbols();
             _logger.LogInformation("Loaded {Count} NY Dow symbols", symbols.Count);
+            return symbols;
+        }
+
+        if (useBuffett)
+        {
+            var symbols = await _indexSymbolService.GetBuffettSymbols();
+            _logger.LogInformation("Loaded {Count} Buffett portfolio symbols", symbols.Count);
             return symbols;
         }
 
@@ -55,6 +62,6 @@ public class SymbolListProvider
             }
         }
 
-        throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, or --file");
+        throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, --buffett, or --file");
     }
 }

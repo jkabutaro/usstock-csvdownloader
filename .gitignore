@@ -38,3 +38,8 @@ bld/
 
 ## Downloaded CSV files
 output/*.csv
+
+## Cache files
+Cache/
+*_symbols.csv
+failed_symbols_report.txt

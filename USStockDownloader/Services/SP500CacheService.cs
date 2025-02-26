@@ -63,6 +63,13 @@ public class SP500CacheService
         return symbols.Select(s => s.Symbol).ToList();
     }
 
+    public async Task ForceUpdateAsync()
+    {
+        _logger.LogInformation("Forcing update of S&P 500 symbols");
+        _cachedSymbols = await FetchSP500Symbols();
+        await SaveSymbolsToCache(_cachedSymbols);
+    }
+
     private async Task<List<StockSymbol>> FetchSP500Symbols()
     {
         try

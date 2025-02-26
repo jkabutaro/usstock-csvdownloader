@@ -10,6 +10,7 @@ public class DownloadOptions
     public bool UseNYD { get; set; }
     public bool ForceNYDUpdate { get; set; }
     public bool UseBuffett { get; set; }
+    public bool ForceBuffettUpdate { get; set; }
     public string? Symbols { get; set; }
     public int MaxConcurrentDownloads { get; set; } = 3;
     public int MaxRetries { get; set; } = 3;
@@ -51,6 +52,10 @@ public class DownloadOptions
         var buffettOption = new Option<bool>(
             new[] { "-b", "--buffett" },
             "Use Buffett's portfolio symbols");
+
+        var buffettForceOption = new Option<bool>(
+            "--buffett-f",
+            "Force update of Buffett's portfolio symbols");
 
         var symbolsOption = new Option<string?>(
             new[] { "--symbols" },
@@ -94,6 +99,7 @@ public class DownloadOptions
         rootCommand.AddOption(nydOption);
         rootCommand.AddOption(nydForceOption);
         rootCommand.AddOption(buffettOption);
+        rootCommand.AddOption(buffettForceOption);
         rootCommand.AddOption(symbolsOption);
         rootCommand.AddOption(parallelOption);
         rootCommand.AddOption(retriesOption);
@@ -112,6 +118,7 @@ public class DownloadOptions
                 options.UseNYD = context.ParseResult.GetValueForOption(nydOption);
                 options.ForceNYDUpdate = context.ParseResult.GetValueForOption(nydForceOption);
                 options.UseBuffett = context.ParseResult.GetValueForOption(buffettOption);
+                options.ForceBuffettUpdate = context.ParseResult.GetValueForOption(buffettForceOption);
                 options.Symbols = context.ParseResult.GetValueForOption(symbolsOption);
                 options.MaxConcurrentDownloads = context.ParseResult.GetValueForOption(parallelOption);
                 options.MaxRetries = context.ParseResult.GetValueForOption(retriesOption);
@@ -220,6 +227,7 @@ public class DownloadOptions
         Console.WriteLine("  -n, --nyd        Download NY Dow symbols (if this is set, --file is not required)");
         Console.WriteLine("  --nydf           Force update of NY Dow symbols list");
         Console.WriteLine("  -b, --buffett    Download Buffett's portfolio symbols (if this is set, --file is not required)");
+        Console.WriteLine("  --buffett-f      Force update of Buffett's portfolio symbols list");
         Console.WriteLine("  --symbols        Comma-separated list of stock symbols");
         Console.WriteLine("  -p, --parallel   Maximum number of parallel downloads (default: 3)");
         Console.WriteLine("  -r, --retries    Maximum number of retries per symbol (default: 3)");

@@ -26,6 +26,13 @@ public class NYDCacheService
         return symbols.Select(s => s.Symbol).ToList();
     }
 
+    public async Task ForceUpdateAsync()
+    {
+        _logger.LogInformation("Forcing update of NY Dow symbols");
+        _cachedSymbols = await FetchNYDSymbols();
+        await SaveToCache(_cachedSymbols);
+    }
+
     public async Task<List<StockSymbol>> GetNYDSymbols()
     {
         if (_cachedSymbols != null)
