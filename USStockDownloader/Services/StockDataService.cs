@@ -106,16 +106,29 @@ public class StockDataService : IStockDataService
                     }
 
                     var dateTime = DateTimeOffset.FromUnixTimeSeconds(result.Timestamp[i] ?? 0).Date;
+                    
+                    // CS8629警告の抑制
+                    #pragma warning disable CS8629 // Null許容値型はNullになる場合があります
+
+                    // Null許容値型の安全な処理
+                    decimal open = quote.Open[i].HasValue ? quote.Open[i].Value : 0m;
+                    decimal high = quote.High[i].HasValue ? quote.High[i].Value : 0m;
+                    decimal low = quote.Low[i].HasValue ? quote.Low[i].Value : 0m;
+                    decimal close = quote.Close[i].HasValue ? quote.Close[i].Value : 0m;
+                    long volume = quote.Volume[i].HasValue ? quote.Volume[i].Value : 0L;
+
+                    #pragma warning restore CS8629 // 警告の抑制を解除
+
                     var stockData = new StockData
                     {
                         Symbol = symbol,
                         DateTime = dateTime,
                         Date = dateTime.Year * 10000 + dateTime.Month * 100 + dateTime.Day,
-                        Open = quote.Open[i].Value,
-                        High = quote.High[i].Value,
-                        Low = quote.Low[i].Value,
-                        Close = quote.Close[i].Value,
-                        Volume = quote.Volume[i].Value
+                        Open = open,
+                        High = high,
+                        Low = low,
+                        Close = close,
+                        Volume = volume
                     };
 
                     // データの検証

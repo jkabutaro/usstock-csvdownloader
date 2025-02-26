@@ -183,7 +183,7 @@ public class DownloadOptions
         Console.WriteLine("米国株価データダウンローダー (US Stock Price Downloader)");
         Console.WriteLine();
         Console.WriteLine("使用方法 (Usage):");
-        Console.WriteLine("  dotnet run -- [オプション]");
+        Console.WriteLine("  USStockDownloader.exe [オプション]");
         Console.WriteLine();
         Console.WriteLine("オプション (Options):");
         Console.WriteLine("  -s, --sp500       S&P 500銘柄を使用");
@@ -200,13 +200,13 @@ public class DownloadOptions
         Console.WriteLine("  -o, --output      データ出力ディレクトリ");
         Console.WriteLine();
         Console.WriteLine("使用例 (Examples):");
-        Console.WriteLine("  dotnet run -- --sp500");
-        Console.WriteLine("  dotnet run -- --nyd");
-        Console.WriteLine("  dotnet run -- --buffett");
-        Console.WriteLine("  dotnet run -- --file symbols.txt");
-        Console.WriteLine("  dotnet run -- --symbols AAPL,MSFT,GOOGL");
-        Console.WriteLine("  dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31");
-        Console.WriteLine("  dotnet run -- --symbols AAPL --output \"C:\\stock\\data\"");
+        Console.WriteLine("  USStockDownloader.exe --sp500");
+        Console.WriteLine("  USStockDownloader.exe --nyd");
+        Console.WriteLine("  USStockDownloader.exe --buffett");
+        Console.WriteLine("  USStockDownloader.exe --file symbols.txt");
+        Console.WriteLine("  USStockDownloader.exe --symbols AAPL,MSFT,GOOGL");
+        Console.WriteLine("  USStockDownloader.exe --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31");
+        Console.WriteLine("  USStockDownloader.exe --symbols AAPL --output \"C:\\stock\\data\"");
         Console.WriteLine();
         Console.WriteLine("注意: 少なくとも --sp500, --nyd, --buffett, --file, --symbols のいずれかを指定する必要があります。");
     }
