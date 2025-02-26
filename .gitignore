@@ -36,8 +36,8 @@ bld/
 ## Visual Studio cache/options directory
 .vs/
 
-## Downloaded CSV files
-output/*.csv
+## Downloaded files
+output/
 
 ## Cache files
 Cache/
