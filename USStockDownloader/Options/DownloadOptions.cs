@@ -25,6 +25,13 @@ public class DownloadOptions
 
     public static DownloadOptions Parse(string[] args)
     {
+        // 引数がない場合や、ヘルプオプションがある場合は、ヘルプを表示して終了
+        if (args.Length == 0 || args.Contains("-h") || args.Contains("--help"))
+        {
+            ShowHelp();
+            Environment.Exit(args.Length == 0 ? 1 : 0);
+        }
+
         var options = new DownloadOptions();
 
         var rootCommand = new RootCommand("US Stock Price Downloader");
@@ -132,37 +139,67 @@ public class DownloadOptions
                 if (!options.UseSP500 && !options.UseNYD && !options.UseBuffett && 
                     string.IsNullOrEmpty(options.SymbolFile) && string.IsNullOrEmpty(options.Symbols))
                 {
+                    Console.WriteLine("エラー: シンボルソースが指定されていません。");
+                    Console.WriteLine("以下のオプションのいずれかを指定してください: --sp500, --nyd, --buffett, --file, --symbols");
+                    Console.WriteLine();
+                    ShowHelp();
+                    Environment.Exit(1);
+                }
+
+                try
+                {
+                    options.Validate();
+                }
+                catch (ArgumentException ex)
+                {
+                    Console.WriteLine($"エラー: {ex.Message}");
+                    Console.WriteLine();
                     ShowHelp();
                     Environment.Exit(1);
                 }
             });
 
-        rootCommand.Invoke(args);
+        try
+        {
+            int exitCode = rootCommand.Invoke(args);
+            if (exitCode != 0)
+            {
+                Environment.Exit(exitCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"エラー: {ex.Message}");
+            Console.WriteLine();
+            ShowHelp();
+            Environment.Exit(1);
+        }
+
         return options;
     }
 
     private static void ShowHelp()
     {
-        Console.WriteLine("US Stock Price Downloader");
+        Console.WriteLine("米国株価データダウンローダー (US Stock Price Downloader)");
         Console.WriteLine();
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  dotnet run -- [options]");
+        Console.WriteLine("使用方法 (Usage):");
+        Console.WriteLine("  dotnet run -- [オプション]");
         Console.WriteLine();
-        Console.WriteLine("Options:");
-        Console.WriteLine("  -s, --sp500       Use S&P 500 symbols");
-        Console.WriteLine("  -n, --nyd         Use NY Dow symbols");
-        Console.WriteLine("  -b, --buffett     Use Buffett's portfolio symbols");
-        Console.WriteLine("  -f, --file        Path to the symbol file");
-        Console.WriteLine("  --symbols         Comma-separated list of stock symbols");
-        Console.WriteLine("  -p, --parallel    Maximum number of concurrent downloads (default: 3)");
-        Console.WriteLine("  -r, --retries     Maximum number of retries (default: 3)");
-        Console.WriteLine("  -d, --delay       Retry delay in milliseconds (default: 1000)");
-        Console.WriteLine("  -e, --exponential Use exponential backoff for retries (default: true)");
-        Console.WriteLine("  --start-date      Start date for historical data (format: yyyy-MM-dd)");
-        Console.WriteLine("  --end-date        End date for historical data (format: yyyy-MM-dd)");
-        Console.WriteLine("  -o, --output      Output directory for the downloaded data");
+        Console.WriteLine("オプション (Options):");
+        Console.WriteLine("  -s, --sp500       S&P 500銘柄を使用");
+        Console.WriteLine("  -n, --nyd         NYダウ銘柄を使用");
+        Console.WriteLine("  -b, --buffett     バフェットポートフォリオ銘柄を使用");
+        Console.WriteLine("  -f, --file        銘柄ファイルのパス");
+        Console.WriteLine("  --symbols         カンマ区切りの銘柄リスト");
+        Console.WriteLine("  -p, --parallel    同時ダウンロード数 (デフォルト: 3)");
+        Console.WriteLine("  -r, --retries     最大リトライ回数 (デフォルト: 3)");
+        Console.WriteLine("  -d, --delay       リトライ時の遅延ミリ秒 (デフォルト: 1000)");
+        Console.WriteLine("  -e, --exponential 指数バックオフを使用 (デフォルト: true)");
+        Console.WriteLine("  --start-date      データ取得開始日 (形式: yyyy-MM-dd)");
+        Console.WriteLine("  --end-date        データ取得終了日 (形式: yyyy-MM-dd)");
+        Console.WriteLine("  -o, --output      データ出力ディレクトリ");
         Console.WriteLine();
-        Console.WriteLine("Examples:");
+        Console.WriteLine("使用例 (Examples):");
         Console.WriteLine("  dotnet run -- --sp500");
         Console.WriteLine("  dotnet run -- --nyd");
         Console.WriteLine("  dotnet run -- --buffett");
@@ -171,7 +208,7 @@ public class DownloadOptions
         Console.WriteLine("  dotnet run -- --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31");
         Console.WriteLine("  dotnet run -- --symbols AAPL --output \"C:\\stock\\data\"");
         Console.WriteLine();
-        Console.WriteLine("Note: At least one of --sp500, --nyd, --buffett, --file, or --symbols must be specified.");
+        Console.WriteLine("注意: 少なくとも --sp500, --nyd, --buffett, --file, --symbols のいずれかを指定する必要があります。");
     }
 
     public void Validate()
