@@ -19,6 +19,9 @@ public class DownloadOptions
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public string? OutputDirectory { get; set; }
+    public string? ExportListCsv { get; set; } = null;
+    public bool UseIndex { get; set; } = false;
+    public bool ForceIndexUpdate { get; set; } = false;
 
     public DateTime GetStartDate() => StartDate ?? DateTime.Now.AddYears(-1);
     public DateTime GetEndDate() => EndDate ?? DateTime.Now;
@@ -41,7 +44,7 @@ public class DownloadOptions
             "Path to the symbol file");
 
         var sp500Option = new Option<bool>(
-            new[] { "-s", "--sp500" },
+            new[] { "--sp500" },
             "Use S&P 500 symbols");
 
         var sp500ForceOption = new Option<bool>(
@@ -100,6 +103,18 @@ public class DownloadOptions
             new[] { "-o", "--output" },
             "Output directory for the downloaded data");
 
+        var listCsvOption = new Option<string?>(
+            "--listcsv",
+            "Export symbol list to CSV file (specify relative path)");
+
+        var indexOption = new Option<bool>(
+            new[] { "--index" },
+            "Use major indices");
+            
+        var indexForceOption = new Option<bool>(
+            "--indexf",
+            "Force update of major indices list");
+
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(sp500Option);
         rootCommand.AddOption(sp500ForceOption);
@@ -115,6 +130,9 @@ public class DownloadOptions
         rootCommand.AddOption(startDateOption);
         rootCommand.AddOption(endDateOption);
         rootCommand.AddOption(outputDirOption);
+        rootCommand.AddOption(listCsvOption);
+        rootCommand.AddOption(indexOption);
+        rootCommand.AddOption(indexForceOption);
 
         rootCommand.SetHandler(
             (context) =>
@@ -134,13 +152,17 @@ public class DownloadOptions
                 options.StartDate = context.ParseResult.GetValueForOption(startDateOption);
                 options.EndDate = context.ParseResult.GetValueForOption(endDateOption);
                 options.OutputDirectory = context.ParseResult.GetValueForOption(outputDirOption);
+                options.ExportListCsv = context.ParseResult.GetValueForOption(listCsvOption);
+                options.UseIndex = context.ParseResult.GetValueForOption(indexOption);
+                options.ForceIndexUpdate = context.ParseResult.GetValueForOption(indexForceOption);
 
                 // 引数の検証
                 if (!options.UseSP500 && !options.UseNYD && !options.UseBuffett && 
-                    string.IsNullOrEmpty(options.SymbolFile) && string.IsNullOrEmpty(options.Symbols))
+                    string.IsNullOrEmpty(options.SymbolFile) && string.IsNullOrEmpty(options.Symbols) &&
+                    !options.UseIndex)
                 {
                     Console.WriteLine("エラー: シンボルソースが指定されていません。");
-                    Console.WriteLine("以下のオプションのいずれかを指定してください: --sp500, --nyd, --buffett, --file, --symbols");
+                    Console.WriteLine("以下のオプションのいずれかを指定してください: --sp500, --nyd, --buffett, --file, --symbols, --index");
                     Console.WriteLine();
                     ShowHelp();
                     Environment.Exit(1);
@@ -186,94 +208,60 @@ public class DownloadOptions
         Console.WriteLine("  USStockDownloader.exe [オプション]");
         Console.WriteLine();
         Console.WriteLine("オプション (Options):");
-        Console.WriteLine("  -s, --sp500       S&P 500銘柄を使用");
-        Console.WriteLine("  -n, --nyd         NYダウ銘柄を使用");
-        Console.WriteLine("  -b, --buffett     バフェットポートフォリオ銘柄を使用");
-        Console.WriteLine("  -f, --file        銘柄ファイルのパス");
-        Console.WriteLine("  --symbols         カンマ区切りの銘柄リスト");
-        Console.WriteLine("  -p, --parallel    同時ダウンロード数 (デフォルト: 3)");
-        Console.WriteLine("  -r, --retries     最大リトライ回数 (デフォルト: 3)");
-        Console.WriteLine("  -d, --delay       リトライ時の遅延ミリ秒 (デフォルト: 1000)");
-        Console.WriteLine("  -e, --exponential 指数バックオフを使用 (デフォルト: true)");
-        Console.WriteLine("  --start-date      データ取得開始日 (形式: yyyy-MM-dd)");
-        Console.WriteLine("  --end-date        データ取得終了日 (形式: yyyy-MM-dd)");
-        Console.WriteLine("  -o, --output      データ出力ディレクトリ");
+        Console.WriteLine("  -f, --file <path>         銘柄リストファイルのパス");
+        Console.WriteLine("  --sp500                   S&P 500銘柄を使用");
+        Console.WriteLine("  --sp500f                  S&P 500銘柄リストを強制的に更新");
+        Console.WriteLine("  -n, --nyd                 NYダウ銘柄を使用");
+        Console.WriteLine("  --nydf                    NYダウ銘柄リストを強制的に更新");
+        Console.WriteLine("  -b, --buffett             バフェットポートフォリオ銘柄を使用");
+        Console.WriteLine("  --buffett-f               バフェットポートフォリオ銘柄リストを強制的に更新");
+        Console.WriteLine("  --index                   主要指数を使用");
+        Console.WriteLine("  --indexf                  主要指数リストを強制的に更新");
+        Console.WriteLine("  --symbols <symbols>       カンマ区切りの銘柄リスト (例: AAPL,MSFT,GOOGL)");
+        Console.WriteLine("  -p, --parallel <num>      並列ダウンロード数 (デフォルト: 3)");
+        Console.WriteLine("  -r, --retries <num>       リトライ回数 (デフォルト: 3)");
+        Console.WriteLine("  -d, --delay <ms>          リトライ間隔 (ミリ秒) (デフォルト: 1000)");
+        Console.WriteLine("  -e, --exponential         指数バックオフを使用 (デフォルト: true)");
+        Console.WriteLine("  --start-date <date>       データ取得開始日 (yyyy-MM-dd形式)");
+        Console.WriteLine("  --end-date <date>         データ取得終了日 (yyyy-MM-dd形式)");
+        Console.WriteLine("  -o, --output <dir>        出力ディレクトリ");
+        Console.WriteLine("  --listcsv <path>          銘柄リストをCSVファイルに出力 (相対パスを指定)");
+        Console.WriteLine("  -h, --help                ヘルプを表示");
         Console.WriteLine();
-        Console.WriteLine("使用例 (Examples):");
+        Console.WriteLine("例 (Examples):");
         Console.WriteLine("  USStockDownloader.exe --sp500");
-        Console.WriteLine("  USStockDownloader.exe --nyd");
-        Console.WriteLine("  USStockDownloader.exe --buffett");
-        Console.WriteLine("  USStockDownloader.exe --file symbols.txt");
-        Console.WriteLine("  USStockDownloader.exe --symbols AAPL,MSFT,GOOGL");
-        Console.WriteLine("  USStockDownloader.exe --symbols AAPL --start-date 2024-01-01 --end-date 2024-12-31");
-        Console.WriteLine("  USStockDownloader.exe --symbols AAPL --output \"C:\\stock\\data\"");
-        Console.WriteLine();
-        Console.WriteLine("注意: 少なくとも --sp500, --nyd, --buffett, --file, --symbols のいずれかを指定する必要があります。");
+        Console.WriteLine("  USStockDownloader.exe --nyd --output ./data");
+        Console.WriteLine("  USStockDownloader.exe --symbols AAPL,MSFT,GOOGL --start-date 2020-01-01");
+        Console.WriteLine("  USStockDownloader.exe --file symbols.txt --parallel 5");
+        Console.WriteLine("  USStockDownloader.exe --index --listcsv");
+        Console.WriteLine("  USStockDownloader.exe --index --indexf");
     }
 
     public void Validate()
     {
-        if (string.IsNullOrEmpty(SymbolFile) && !UseSP500 && !UseNYD && !UseBuffett && string.IsNullOrEmpty(Symbols))
+        if (MaxConcurrentDownloads <= 0)
         {
-            throw new ArgumentException("Either --file, --sp500, --nyd, --buffett, or --symbols option must be specified");
-        }
-
-        var startDate = GetStartDate();
-        var endDate = GetEndDate();
-
-        if (startDate > endDate)
-        {
-            throw new ArgumentException("Start date must be before end date.");
-        }
-
-        if (endDate > DateTime.Now)
-        {
-            throw new ArgumentException("End date cannot be in the future.");
-        }
-
-        if (startDate < new DateTime(1970, 1, 1))
-        {
-            throw new ArgumentException("Start date cannot be before 1970-01-01.");
-        }
-
-        if (MaxConcurrentDownloads < 1 || MaxConcurrentDownloads > 10)
-        {
-            throw new ArgumentException("Parallel downloads must be between 1 and 10");
+            throw new ArgumentException("並列ダウンロード数は1以上である必要があります。");
         }
 
         if (MaxRetries < 0)
         {
-            throw new ArgumentException("Retries must be 0 or greater");
+            throw new ArgumentException("リトライ回数は0以上である必要があります。");
         }
 
-        if (RetryDelay < 100)
+        if (RetryDelay < 0)
         {
-            throw new ArgumentException("Retry delay must be at least 100ms");
+            throw new ArgumentException("リトライ間隔は0以上である必要があります。");
         }
-    }
 
-    public void PrintUsage()
-    {
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  USStockDownloader.exe [options]");
-        Console.WriteLine();
-        Console.WriteLine("Options:");
-        Console.WriteLine("  -f, --file       Path to the file containing stock symbols");
-        Console.WriteLine("  -s, --sp500      Download S&P 500 symbols (if this is set, --file is not required)");
-        Console.WriteLine("  --sp500f         Force update of S&P 500 symbols list");
-        Console.WriteLine("  -n, --nyd        Download NY Dow symbols (if this is set, --file is not required)");
-        Console.WriteLine("  --nydf           Force update of NY Dow symbols list");
-        Console.WriteLine("  -b, --buffett    Download Buffett's portfolio symbols (if this is set, --file is not required)");
-        Console.WriteLine("  --buffett-f      Force update of Buffett's portfolio symbols list");
-        Console.WriteLine("  --symbols        Comma-separated list of stock symbols");
-        Console.WriteLine("  -p, --parallel   Maximum number of parallel downloads (default: 3)");
-        Console.WriteLine("  -r, --retries    Maximum number of retries per symbol (default: 3)");
-        Console.WriteLine("  -d, --delay      Delay in milliseconds between retries (default: 1000)");
-        Console.WriteLine("  -e, --exponential  Use exponential backoff for retries (default: true)");
-        Console.WriteLine("  --start-date     Start date for historical data (format: yyyy-MM-dd)");
-        Console.WriteLine("  --end-date       End date for historical data (format: yyyy-MM-dd)");
-        Console.WriteLine("  -o, --output     Output directory for the downloaded data");
-        Console.WriteLine();
-        Console.WriteLine("Note: If not specified, start date is set to 1 year ago and end date is set to today.");
+        if (StartDate.HasValue && EndDate.HasValue && StartDate.Value > EndDate.Value)
+        {
+            throw new ArgumentException("開始日は終了日より前である必要があります。");
+        }
+
+        if (!string.IsNullOrEmpty(ExportListCsv) && (System.IO.Path.IsPathRooted(ExportListCsv) || ExportListCsv.Contains(":")))
+        {
+            throw new ArgumentException("--listcsvオプションには相対パスを指定してください。絶対パスは使用できません。");
+        }
     }
 }

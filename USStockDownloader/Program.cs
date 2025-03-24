@@ -105,6 +105,20 @@ namespace USStockDownloader
                             await serviceProvider.GetRequiredService<SP500CacheService>().ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(true, false, false, null);
+                        
+                        // --listcsvオプションが指定されている場合は、銘柄リストをCSVファイルに出力
+                        if (options.ExportListCsv != null)
+                        {
+                            Console.WriteLine($"Exporting symbol list to CSV in {options.ExportListCsv}...");
+                            await serviceProvider.GetRequiredService<SymbolListExportService>().ExportSymbolListToCsv(options.ExportListCsv);
+                            Console.WriteLine("Symbol list exported successfully.");
+                            
+                            // CSVエクスポートのみを行う場合は、ここで終了
+                            if (!args.Contains("--download"))
+                            {
+                                return;
+                            }
+                        }
                     }
                     else if (options.UseNYD)
                     {
@@ -116,6 +130,21 @@ namespace USStockDownloader
                             await nydService.ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(false, true, false, null);
+                        
+                        // --listcsvオプションが指定されている場合は、NYダウ構成銘柄リストをCSVファイルに出力
+                        if (options.ExportListCsv != null)
+                        {
+                            Console.WriteLine($"Exporting NY Dow symbol list to CSV in {options.ExportListCsv}...");
+                            await serviceProvider.GetRequiredService<SymbolListExportService>()
+                                .ExportNYDListToCsvAsync(options.ExportListCsv, options.ForceNYDUpdate);
+                            Console.WriteLine("NY Dow symbol list exported successfully.");
+                            
+                            // CSVエクスポートのみを行う場合は、ここで終了
+                            if (!args.Contains("--download"))
+                            {
+                                return;
+                            }
+                        }
                     }
                     else if (options.UseBuffett)
                     {
@@ -127,6 +156,49 @@ namespace USStockDownloader
                             await buffettService.ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(false, false, true, null);
+                        
+                        // --listcsvオプションが指定されている場合は、バフェットポートフォリオ銘柄リストをCSVファイルに出力
+                        if (options.ExportListCsv != null)
+                        {
+                            Console.WriteLine($"Exporting Buffett portfolio list to CSV in {options.ExportListCsv}...");
+                            await serviceProvider.GetRequiredService<SymbolListExportService>()
+                                .ExportBuffettListToCsvAsync(options.ExportListCsv, options.ForceBuffettUpdate);
+                            Console.WriteLine("Buffett portfolio list exported successfully.");
+                            
+                            // CSVエクスポートのみを行う場合は、ここで終了
+                            if (!args.Contains("--download"))
+                            {
+                                return;
+                            }
+                        }
+                    }
+                    else if (options.UseIndex)
+                    {
+                        Console.WriteLine("Using major indices...");
+                        
+                        // 指数シンボルを動的に取得
+                        var indexService = serviceProvider.GetRequiredService<IndexListService>();
+                        var indexSymbols = options.ForceIndexUpdate 
+                            ? await indexService.ForceUpdateMajorIndicesAsync()
+                            : await indexService.GetMajorIndicesAsync();
+                        
+                        symbols = indexSymbols.Select(i => i.Symbol).ToList();
+                        Console.WriteLine($"Retrieved {symbols.Count} index symbols.");
+                        
+                        // --listcsvオプションが指定されている場合は、指数リストをCSVファイルに出力
+                        if (options.ExportListCsv != null)
+                        {
+                            Console.WriteLine($"Exporting index list to CSV in {options.ExportListCsv}...");
+                            await serviceProvider.GetRequiredService<SymbolListExportService>()
+                                .ExportIndexListToCsvAsync(options.ExportListCsv, options.ForceIndexUpdate);
+                            Console.WriteLine("Index list exported successfully.");
+                            
+                            // CSVエクスポートのみを行う場合は、ここで終了
+                            if (!args.Contains("--download"))
+                            {
+                                return;
+                            }
+                        }
                     }
                     else if (!string.IsNullOrEmpty(options.SymbolFile))
                     {
@@ -140,14 +212,18 @@ namespace USStockDownloader
                     }
                     else
                     {
-                        Console.WriteLine("No symbols specified. Use --sp500, --nyd, --buffett, --file, or --symbols.");
+                        Console.WriteLine("No symbols specified. Use --sp500, --nyd, --buffett, --index, --file, or --symbols.");
                         return;
                     }
 
                     Console.WriteLine($"Found {symbols.Count} symbols.");
                     Console.WriteLine("Starting download process...");
 
-                    await downloadManager.DownloadStockDataAsync(symbols);
+                    await downloadManager.DownloadStockDataAsync(
+                        symbols, 
+                        options.OutputDirectory, 
+                        options.StartDate, 
+                        options.EndDate);
 
                     Console.WriteLine("Download process completed.");
                 }
@@ -162,43 +238,54 @@ namespace USStockDownloader
                 var logger = new LoggerConfiguration()
                     .MinimumLevel.Debug()
                     .WriteTo.Console()
+                    .WriteTo.File("error.log", rollingInterval: RollingInterval.Day)
                     .CreateLogger();
-
-                logger.Error(ex, "Fatal error occurred");
-                Console.WriteLine($"Fatal error: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                throw;
+                
+                logger.Error(ex, "An unhandled exception occurred");
+                Console.WriteLine($"An error occurred: {ex.Message}");
+                Console.WriteLine("詳細はerror.logを確認してください。");
+                Environment.ExitCode = 1;
             }
         }
 
-        private static ServiceProvider ConfigureServices()
+        private static IServiceProvider ConfigureServices()
         {
+            Console.WriteLine("HTTP client configured.");
+            
+            // サービスコレクションを作成
             var services = new ServiceCollection();
-
-            // ロガーの設定
+            
+            // ロガーを登録
             services.AddLogging(builder =>
             {
-                builder.AddConsole();
-                builder.SetMinimumLevel(LogLevel.Information);
+                builder.AddSerilog(new LoggerConfiguration()
+                    .MinimumLevel.Information()
+                    .WriteTo.Console()
+                    .WriteTo.File("app.log", rollingInterval: RollingInterval.Day)
+                    .CreateLogger());
             });
-
-            // HTTPクライアントの設定
+            
+            // HTTPクライアントを登録
             services.AddHttpClient();
-            Console.WriteLine("HTTP client configured.");
-
-            // サービスの登録
-            services.AddTransient<IStockDataService, StockDataService>();
-            services.AddTransient<StockDownloadManager>();
+            
+            // サービスを登録
+            services.AddSingleton<IStockDataService, StockDataService>();
+            services.AddSingleton<StockDownloadManager>();
+            services.AddSingleton<IndexSymbolService>();
+            services.AddSingleton<SymbolListProvider>();
             services.AddSingleton<SP500CacheService>();
             services.AddSingleton<NYDCacheService>();
             services.AddSingleton<BuffettCacheService>();
-            services.AddSingleton<IndexSymbolService>();
-            services.AddSingleton<SymbolListProvider>();
+            services.AddSingleton<IndexCacheService>();
+            services.AddSingleton<IndexListService>();
+            services.AddSingleton<SymbolListExportService>();
+            
             Console.WriteLine("Services registered.");
-
+            
+            // サービスプロバイダーを構築
             var serviceProvider = services.BuildServiceProvider();
             Console.WriteLine("Service provider built.");
-
+            
             return serviceProvider;
         }
     }

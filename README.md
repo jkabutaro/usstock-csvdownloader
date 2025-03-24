@@ -10,6 +10,9 @@
 - 並列ダウンロード（デフォルト3並列）
 - S&P 500銘柄の自動取得（Wikipediaから）
 - ニューヨークダウ工業株30種の銘柄の自動取得（Wikipediaから）
+- S&P 500銘柄リストのCSV出力（銘柄コード、名前、市場、種別情報を含む）
+- 主要指数リストのCSV出力
+- バフェットポートフォリオ銘柄リストのCSV出力
 
 ### エラー処理とリトライ機能
 - Pollyライブラリを使用したリトライ機構
@@ -29,6 +32,12 @@
 - エラータイプごとの集計
 - 再試行結果の記録
 
+## リポジトリ情報
+
+このプロジェクトは以下のGitHubリポジトリで公開されています：
+- リポジトリURL: https://github.com/jkabutaro/usstock-csvdownloader
+- 開発者: jkabutaro
+
 ## 使用方法
 
 ### システム要件
@@ -38,7 +47,7 @@
 
 ### インストール
 ```bash
-git clone [repository-url]
+git clone https://github.com/jkabutaro/usstock-csvdownloader.git
 cd USStockDownloader
 dotnet restore
 ```
@@ -59,11 +68,20 @@ dotnet run -- -n
 # ニューヨークダウ工業株30種の銘柄リストを強制的に更新してダウンロード
 dotnet run -- --nydf
 
+# ニューヨークダウ工業株30種の銘柄リストをCSVファイルに出力
+dotnet run -- --nyd --listcsv output/nyd_list.csv
+
 # バフェット・ポートフォリオの銘柄を自動取得してダウンロード（開発中）
 dotnet run -- -b
 
 # バフェット・ポートフォリオの銘柄リストを強制的に更新してダウンロード（開発中）
 dotnet run -- --buffett-f
+
+# バフェット・ポートフォリオの銘柄リストをCSVファイルに出力
+dotnet run -- --buffett --listcsv output/buffett_list.csv
+
+# バフェット・ポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
+dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
 
 # 特定の銘柄リストをダウンロード
 dotnet run -- --file symbols.txt
@@ -71,8 +89,14 @@ dotnet run -- --file symbols.txt
 # 個別銘柄を指定してダウンロード（カンマ区切り）
 dotnet run -- --symbols AAPL,MSFT,GOOGL
 
-# カスタム設定でダウンロード
-dotnet run -- --file symbols.txt --max-retries 5 --retry-delay 5000 --concurrent 3
+# S&P 500銘柄リストをCSVファイルに出力
+dotnet run -- --sp500 --listcsv output/sp500_list.csv
+
+# 主要指数リストをCSVファイルに出力
+dotnet run -- --index --listcsv output/index_list.csv
+
+# 主要指数リストを強制的に更新してCSVファイルに出力
+dotnet run -- --index --indexf --listcsv output/index_list.csv
 ```
 
 #### 利用可能なオプション
@@ -95,11 +119,40 @@ dotnet run -- --file symbols.txt --max-retries 5 --retry-delay 5000 --concurrent
 | `--output-dir <path>` | 出力ディレクトリを指定 | ./output |
 | `--start-date <date>` | データ取得開始日（yyyy-MM-dd形式） | 1年前 |
 | `--end-date <date>` | データ取得終了日（yyyy-MM-dd形式） | 現在 |
+| `--listcsv <path>` | 銘柄リストをCSVファイルに出力（相対パスを指定） | - |
+| `--index` | 主要指数を使用 | - |
+| `--indexf` | 主要指数リストを強制的に更新 | - |
 
 ## 免責事項と注意点
 
-### Wikipediaからの情報取得について
-本アプリケーションはS&P 500銘柄リスト、NYダウ銘柄リスト、およびバフェットポートフォリオの銘柄情報をWikipediaのページから自動的に取得しています。これらの情報は以下の点に注意してください：
+### データソースについて
+本アプリケーションは以下のソースから銘柄情報を取得しています：
+
+1. **S&P 500銘柄リスト**
+   - 取得元: Wikipediaの「List of S&P 500 companies」ページ
+   - URL: https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
+   - 取得方法: HTMLテーブルのスクレイピング
+   - 更新頻度: 24時間キャッシュ（`--sp500f`オプションで強制更新可能）
+
+2. **NYダウ銘柄リスト**
+   - 取得元: Wikipediaの「Dow Jones Industrial Average」ページ
+   - URL: https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average
+   - 取得方法: HTMLテーブルのスクレイピング
+   - 更新頻度: 24時間キャッシュ（`--nydf`オプションで強制更新可能）
+
+3. **バフェットポートフォリオ銘柄リスト**
+   - 取得元: Wikipediaの「List of assets owned by Berkshire Hathaway」ページ
+   - URL: https://en.wikipedia.org/wiki/List_of_assets_owned_by_Berkshire_Hathaway
+   - 取得方法: HTMLテーブルのスクレイピング
+   - 更新頻度: 24時間キャッシュ（`--buffett-f`オプションで強制更新可能）
+
+4. **主要指数リスト**
+   - 取得元: Yahoo Financeの世界指数ページ（https://finance.yahoo.com/world-indices）
+   - 取得方法: HTMLテーブルのスクレイピング
+   - フォールバック: スクレイピングに失敗した場合は内部定義のデフォルトリストを使用
+   - 更新頻度: 24時間キャッシュ（`--indexf`オプションで強制更新可能）
+
+これらの情報は以下の点に注意してください：
 
 - Wikipediaの記事内容はいつでも変更される可能性があり、その結果として正確な情報が取得できない場合があります
 - Wikipediaのページ構造が変更されると、データ抽出ロジックが機能しなくなる可能性があります
@@ -110,8 +163,6 @@ dotnet run -- --file symbols.txt --max-retries 5 --retry-delay 5000 --concurrent
 - データ取得に失敗した場合のフォールバックメカニズム
 - キャッシュの強制更新オプション（`--sp500-f`、`--nyd-f`、`--buffett-f`）
 - 詳細なエラーログとレポート機能
-
-投資判断に利用する場合は、これらの制限を理解した上でご利用ください。
 
 ## バフェットポートフォリオ銘柄について
 
@@ -138,6 +189,12 @@ dotnet run -- -b
 
 # バフェットポートフォリオの銘柄リストを強制的に更新してダウンロード
 dotnet run -- -b --buffett-f
+
+# バフェットポートフォリオの銘柄リストをCSVファイルに出力
+dotnet run -- --buffett --listcsv output/buffett_list.csv
+
+# バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
+dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
 ```
 
 ## データ形式
@@ -181,7 +238,48 @@ Date,Open,High,Low,Close,AdjClose,Volume
      - エラータイプごとの集計
      - リトライ結果の詳細
 
-3. **ダウンロードログ**
+3. **銘柄リストCSV**
+   - 場所: `output/us_stock_list.csv`
+   - 内容:
+     - S&P 500銘柄のリスト（`--sp500 --listcsv`で出力）
+     - 形式: code,name,market,type
+     - エンコーディング: Shift-JIS
+   - 例:
+     ```csv
+     code,name,market,type
+     AAPL,Apple,NASDAQ,stock
+     MSFT,Microsoft,NASDAQ,stock
+     ```
+
+4. **主要指数リストCSV**
+   - 場所: `output/us_index_list.csv`
+   - 内容:
+     - 主要指数のリスト（`--index --listcsv`で出力）
+     - 形式: code,name,market,type
+     - エンコーディング: Shift-JIS
+   - 例:
+     ```csv
+     code,name,market,type
+     ^DJI,NYダウ（Dow Jones Industrial Average DJIA）,,index
+     ^GSPC,S&P 500（Standard & Poor's 500）,,index
+     ^IXIC,ナスダック総合指数（NASDAQ Composite）,,index
+     ^RUT,ラッセル2000指数（Russell 2000 Index）,,index
+     ```
+
+5. **バフェットポートフォリオ銘柄リストCSV**
+   - 場所: `output/us_stock_list.csv`
+   - 内容:
+     - バフェットポートフォリオの銘柄リスト（`--buffett --listcsv`で出力）
+     - 形式: code,name,market,type
+     - エンコーディング: Shift-JIS
+   - 例:
+     ```csv
+     code,name,market,type
+     AAPL,Apple アップル,NASDAQ,stock
+     AMZN,Amazon アマゾン,NASDAQ,stock
+     ```
+
+6. **ダウンロードログ**
    - 場所: `logs/download_<timestamp>.log`
    - 内容:
      - 詳細な実行ログ
@@ -229,6 +327,36 @@ Date,Open,High,Low,Close,AdjClose,Volume
    dotnet run -- --sp500 --start-date 2023-01-01 --end-date 2024-12-31
    ```
    - 特定期間のデータのみを取得
+
+6. **S&P 500銘柄リストのCSV出力**
+   ```bash
+   dotnet run -- --sp500 --listcsv output/sp500_list.csv
+   ```
+   - S&P 500銘柄のリストをCSVファイルに出力
+
+7. **主要指数リストのCSV出力**
+   ```bash
+   dotnet run -- --index --listcsv output/index_list.csv
+   ```
+   - 主要指数のリストをCSVファイルに出力
+
+8. **主要指数リストを強制的に更新してCSVファイルに出力**
+   ```bash
+   dotnet run -- --index --indexf --listcsv output/index_list.csv
+   ```
+   - 主要指数リストを強制的に更新してCSVファイルに出力
+
+9. **バフェットポートフォリオ銘柄リストのCSV出力**
+   ```bash
+   dotnet run -- --buffett --listcsv output/buffett_list.csv
+   ```
+   - バフェットポートフォリオの銘柄リストをCSVファイルに出力
+
+10. **バフェットポートフォリオ銘柄リストを強制的に更新してCSVファイルに出力**
+    ```bash
+    dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
+    ```
+    - バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
 
 #### パフォーマンスチューニング
 
@@ -457,4 +585,4 @@ Date,Open,High,Low,Close,AdjClose,Volume
 MIT License
 
 ## 貢献
-プルリクエストやイシューの報告を歓迎します。
+プルリクエストやイシューの報告を歓迎します.
