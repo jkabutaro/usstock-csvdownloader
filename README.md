@@ -14,7 +14,8 @@
 - NYダウ銘柄リストのCSV出力（銘柄コード、名前（日本語名付き）、市場、種別情報を含む）
 - 主要指数リストのCSV出力
 - バフェットポートフォリオ銘柄リストのCSV出力（Wikipediaから）
-- Yahoo Finance APIで取得できる全銘柄リストのCSV出力
+- SBI証券取扱いの米国株式データのダウンロード
+- SBI証券取扱いの銘柄リストのCSV出力
 
 ### エラー処理とリトライ機能
 - Pollyライブラリを使用したリトライ機構
@@ -72,13 +73,25 @@ dotnet restore
 dotnet run -- --sp500
 
 # S&P 500銘柄リストを強制的に更新してダウンロード
-dotnet run -- --sp500f
+dotnet run -- --sp500-f
 
 # NYダウ銘柄リストを自動取得してダウンロード
 dotnet run -- -n
 
-# NYダウ銘柄リストを強制的に更新してダウンロード
+# NYダウ銘柄リストを強制的に更新
 dotnet run -- --nyd-f
+
+# バフェットポートフォリオの銘柄を自動取得してダウンロード
+dotnet run -- -b
+
+# バフェットポートフォリオの銘柄リストを強制的に更新してダウンロード
+dotnet run -- --buffett-f
+
+# 主要指数リストをCSVファイルに出力
+dotnet run -- --index --listcsv output/index_list.csv
+
+# 主要指数リストを強制的に更新してCSVファイルに出力
+dotnet run -- --index-f --listcsv output/index_list.csv
 
 # NYダウ銘柄リストをCSVファイルに出力
 dotnet run -- --nyd --listcsv output/nyd_list.csv
@@ -99,41 +112,29 @@ dotnet run -- --buffett-f
 dotnet run -- --buffett --listcsv output/buffett_list.csv
 
 # バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
-dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
-
-# 全銘柄リストをCSVファイルに出力
-dotnet run -- --all --listcsv output/all_stock_list.csv
-
-# 全銘柄リストを強制的に更新してCSVファイルに出力
-dotnet run -- --all --all-f --listcsv output/all_stock_list.csv
-
-# 全銘柄取得機能のテスト実行
-dotnet run -- --testall
-
-# 特定の銘柄リストをダウンロード
-dotnet run -- --file symbols.txt
-
-# 個別銘柄を指定してダウンロード（カンマ区切り）
-dotnet run -- --symbols AAPL,MSFT,GOOGL
+dotnet run -- --buffett-f --listcsv output/buffett_list.csv
 
 # S&P 500銘柄リストをCSVファイルに出力
 dotnet run -- --sp500 --listcsv output/sp500_list.csv
 
-# 主要指数リストをCSVファイルに出力
-dotnet run -- --index --listcsv output/index_list.csv
+# SBI証券取扱いの米国株式データをダウンロード
+dotnet run -- --sbi
 
-# 主要指数リストを強制的に更新してCSVファイルに出力
-dotnet run -- --index --indexf --listcsv output/index_list.csv
+# SBI証券取扱いの米国株式データを強制的に更新してダウンロード
+dotnet run -- --sbi --sbi-f
 
-# Yahoo Finance APIで取得できる全銘柄リストをCSVファイルに出力
-dotnet run -- --all --listcsv output/all_stocks_list.csv
+# SBI証券取扱いの銘柄リストをCSVファイルに出力
+dotnet run -- --sbi --listcsv output/sbi_list.csv
+
+# SBI証券取扱いの銘柄リストを強制的に更新してCSVファイルに出力
+dotnet run -- --sbi --sbi-f --listcsv output/sbi_list.csv
 ```
 
 #### 利用可能なオプション
 | オプション | 説明 | デフォルト値 |
 |------------|------|--------------|
 | `--sp500` | S&P 500銘柄を自動取得してダウンロード | - |
-| `--sp500f` | S&P 500銘柄リストを強制的に更新してダウンロード | - |
+| `--sp500-f` | S&P 500銘柄リストを強制的に更新してダウンロード | - |
 | `-n, --nyd` | NYダウ銘柄リストを自動取得してダウンロード | - |
 | `--nyd-f` | NYダウ銘柄リストを強制的に更新 | - |
 | `-b, --buffett` | バフェットポートフォリオの銘柄を自動取得してダウンロード | - |
@@ -151,8 +152,10 @@ dotnet run -- --all --listcsv output/all_stocks_list.csv
 | `--end-date <date>` | データ取得終了日（yyyy-MM-dd形式） | 現在 |
 | `--listcsv <path>` | 銘柄リストをCSVファイルに出力（相対パスを指定） | - |
 | `--index` | 主要指数を使用 | - |
-| `--indexf` | 主要指数リストを強制的に更新 | - |
-| `--all` | Yahoo Finance APIで取得できる全銘柄をリストアップ | - |
+| `--index-f` | 主要指数リストを強制的に更新 | - |
+| `--sbi` | SBI証券取扱いの米国株式データをダウンロード | - |
+| `--sbi-f` | SBI証券取扱いの銘柄リストを強制的に更新してダウンロード | - |
+| `--sbi --listcsv` | SBI証券取扱いの銘柄リストをCSVファイルに出力 | - |
 
 ## データ形式
 
@@ -195,7 +198,14 @@ AADI,Aadi Biosciences Inc アーディ バイオサイエンシズ,NASDAQ,stock
 | market | 市場(NYSEやNASDAQ) | 文字列 |
 | type | 種類(stockやindexやetf) | 文字列 |
 
-NYダウ銘柄リスト（`--nyd --listcsv`）の場合は、Shift-JISエンコーディングで出力され、企業名に日本語名が付加されます。出力ファイル名はデフォルトで`us_stock_list.csv`となります。その他のリスト（S&P 500、バフェットポートフォリオなど）はUTF-8エンコーディングで出力されます。
+出力ファイル名はデフォルトで`us_stock_list.csv`となります。すべてのCSVファイルはShift-JISエンコーディングで出力されるため、日本語環境での利用に適しています。
+
+#### SBI証券の銘柄リストをCSVファイルに出力
+SBI証券の銘柄リストをCSVファイルに出力するには、`--sbi`と`--listcsv`オプションを組み合わせて使用します：
+
+```bash
+dotnet run -- --sbi --listcsv output/sbi_list.csv
+```
 
 ## 免責事項と注意点
 
@@ -205,7 +215,7 @@ NYダウ銘柄リスト（`--nyd --listcsv`）の場合は、Shift-JISエンコ�
    - 取得元: Wikipediaの「List of S&P 500 companies」ページ
    - URL: https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
    - 取得方法: HTMLテーブルのスクレイピング
-   - 更新頻度: 24時間キャッシュ（`--sp500f`オプションで強制更新可能）
+   - 更新頻度: 24時間キャッシュ（`--sp500-f`オプションで強制更新可能）
 
 2. **NYダウ銘柄リスト**
    - 取得元: Wikipediaの「Dow Jones Industrial Average」ページ
@@ -226,7 +236,7 @@ NYダウ銘柄リスト（`--nyd --listcsv`）の場合は、Shift-JISエンコ�
    - 取得元: Yahoo Financeの世界指数ページ（https://finance.yahoo.com/world-indices）
    - 取得方法: HTMLテーブルのスクレイピング
    - フォールバック: スクレイピングに失敗した場合は内部定義のデフォルトリストを使用
-   - 更新頻度: 24時間キャッシュ（`--indexf`オプションで強制更新可能）
+   - 更新頻度: 24時間キャッシュ（`--index-f`オプションで強制更新可能）
 
 5. **全銘柄リスト**
    - 取得元: Yahoo Finance API
@@ -267,13 +277,13 @@ NYダウ銘柄リスト（`--nyd --listcsv`）の場合は、Shift-JISエンコ�
 dotnet run -- -b
 
 # バフェットポートフォリオの銘柄リストを強制的に更新してダウンロード
-dotnet run -- -b --buffett-f
+dotnet run -- --buffett-f
 
 # バフェットポートフォリオの銘柄リストをCSVファイルに出力
 dotnet run -- --buffett --listcsv output/buffett_list.csv
 
 # バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
-dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
+dotnet run -- --buffett-f --listcsv output/buffett_list.csv
 ```
 
 ## データ形式
@@ -358,18 +368,22 @@ Date,Open,High,Low,Close,AdjClose,Volume
      AMZN,Amazon アマゾン,NASDAQ,stock
      ```
 
-6. **全銘柄リストCSV**
-   - 場所: `output/all_stocks_list.csv`
+6. **SBI証券銘柄リストCSV**
+   - 場所: `us_stock_list.csv`
    - 内容:
-     - Yahoo Finance APIで取得できる全銘柄のリスト（`--all --listcsv`で出力）
+     - SBI証券で取り扱いのある米国株式の銘柄リスト（`--sbi --listcsv`で出力）
      - 形式: code,name,market,type
-     - エンコーディング: Shift-JIS
+     - エンコーディング: UTF-8
    - 例:
      ```csv
      code,name,market,type
      AAPL,Apple Inc.,NASDAQ,stock
      MSFT,Microsoft Corporation,NASDAQ,stock
      ```
+   - 注意事項:
+     - SBI証券のウェブサイトからデータを取得するため、ネットワーク環境によっては
+       タイムアウトエラーが発生する場合があります
+     - 取得に失敗した場合は明確なエラーメッセージが表示され、代替データは提供されません
 
 7. **ダウンロードログ**
    - 場所: `logs/download_<timestamp>.log`
@@ -387,7 +401,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
    ```
    - Wikipediaから最新のS&P 500銘柄リストを取得
    - 全銘柄の1年分のデータをダウンロード
-   - キャッシュされた銘柄リストがある場合はそれを使用（更新が必要な場合は`--sp500f`オプションを使用）
+   - キャッシュされた銘柄リストがある場合はそれを使用（更新が必要な場合は`--sp500-f`オプションを使用）
 
 2. **NYダウ銘柄リストのダウンロード**
    ```bash
@@ -434,7 +448,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 8. **主要指数リストを強制的に更新してCSVファイルに出力**
    ```bash
-   dotnet run -- --index --indexf --listcsv output/index_list.csv
+   dotnet run -- --index-f --listcsv output/index_list.csv
    ```
    - 主要指数リストを強制的に更新してCSVファイルに出力
 
@@ -446,15 +460,33 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 10. **バフェットポートフォリオ銘柄リストを強制的に更新してCSVファイルに出力**
     ```bash
-    dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
+    dotnet run -- --buffett-f --listcsv output/buffett_list.csv
     ```
     - バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
 
-11. **全銘柄リストのCSV出力**
+11. **SBI証券取扱いの米国株式データをダウンロード**
     ```bash
-    dotnet run -- --all --listcsv output/all_stocks_list.csv
+    dotnet run -- --sbi
     ```
-    - Yahoo Finance APIで取得できる全銘柄のリストをCSVファイルに出力
+    - SBI証券取扱いの米国株式データをダウンロード
+
+12. **SBI証券取扱いの米国株式データを強制的に更新してダウンロード**
+    ```bash
+    dotnet run -- --sbi --sbi-f
+    ```
+    - SBI証券取扱いの米国株式データを強制的に更新してダウンロード
+
+13. **SBI証券取扱いの銘柄リストをCSVファイルに出力**
+    ```bash
+    dotnet run -- --sbi --listcsv output/sbi_list.csv
+    ```
+    - SBI証券取扱いの銘柄リストをCSVファイルに出力
+
+14. **SBI証券取扱いの銘柄リストを強制的に更新してCSVファイルに出力**
+    ```bash
+    dotnet run -- --sbi --sbi-f --listcsv output/sbi_list.csv
+    ```
+    - SBI証券取扱いの銘柄リストを強制的に更新してCSVファイルに出力
 
 #### パフォーマンスチューニング
 
@@ -462,223 +494,70 @@ Date,Open,High,Low,Close,AdjClose,Volume
    ```bash
    dotnet run -- --sp500 --concurrent 5
    ```
-   - 並列数を増やすとダウンロードが高速化
-   - ただしレート制限に注意
+   - 並列ダウンロード数を5に設定
+   - デフォルトは3
+   - 数値が大きいほど処理は速くなりますが、API制限に引っかかる可能性が高まります
 
-2. **リトライ設定の最適化**
+2. **リトライ回数の調整**
    ```bash
-   dotnet run -- --sp500 --max-retries 5 --retry-delay 10000
+   dotnet run -- --sp500 --retries 5
    ```
-   - エラー時のリトライ回数と間隔を調整
-   - レート制限が頻発する場合は間隔を長く
+   - ダウンロード失敗時のリトライ回数を5に設定
+   - デフォルトは3
 
-3. **レート制限対策**
+3. **リトライ間隔の調整**
    ```bash
-   dotnet run -- --sp500 --rate-limit-delay 60000 --concurrent 2
+   dotnet run -- --sp500 --delay 2000
    ```
-   - レート制限が頻発する場合の推奨設定
-   - 待機時間を長く、並列数を少なく
+   - リトライ間隔を2000ミリ秒（2秒）に設定
+   - デフォルトは1000ミリ秒（1秒）
 
-#### トラブルシューティング
-
-1. **レート制限エラーが頻発する場合**
-   - `--rate-limit-delay`を60000（60秒）に増やす
-   - `--concurrent`を2に減らす
-   - `--jitter`をtrueに設定して同時リクエストを分散
-
-2. **特定の銘柄でエラーが発生する場合**
-   - エラーレポート（`failed_symbols_report.txt`）を確認
-   - `--max-retries`を増やして再試行
-   - 問題が解決しない場合はその銘柄をスキップ
-
-3. **メモリ使用量が高い場合**
-   - `--concurrent`を減らして並列数を制限
-   - 処理する銘柄数を分割して実行
-
-## パフォーマンス指標
-
-### 成功率
-- S&P 500銘柄のダウンロード成功率：99.4%（最新のテストで503銘柄中500銘柄成功）
-- 主な改善点：
-  - ピリオドを含むシンボル（BRK.B、BF.B）の処理を改善
-  - レート制限への対応を強化
-  - データ検証機能の追加
-
-### 実行時間
-- 3並列実行時の平均処理時間：約10分（S&P 500全銘柄）
-- 1銘柄あたりの平均処理時間：約1秒
-
-## 実装の詳細
-
-### コンポーネント構成
-1. **StockDataService**
-   - Yahoo Finance APIからのデータ取得
-   - Pollyを使用したリトライロジック
-   - エラー処理とログ記録
-
-2. **StockDownloadManager**
-   - 並列ダウンロードの制御
-   - セマフォを使用した同時実行数の制限
-   - 失敗した銘柄の追跡と再試行
-
-3. **SP500CacheService**
-   - WikipediaからのS&P 500銘柄の取得
-   - HTMLパース処理
-
-4. **StockDataCache**
-   - ダウンロードした株価データのキャッシュ管理
-   - 不要なAPI呼び出しの防止
-   - 市場時間に基づく更新判断ロジック
-
-### キャッシュ機能の詳細
-#### 概要
-- アプリケーションはダウンロードした株価データをローカルにキャッシュし、不要なAPI呼び出しの防止します
-- キャッシュは銘柄ごとに管理され、各銘柄の最終更新時刻とデータの日付範囲を記録します
-- キャッシュの状態に基づいて、データを再取得するかどうかを判断します
-
-#### キャッシュの保存場所
-- ファイル: `%LocalAppData%\USStockDownloader\stock_data_cache.json`
-- 形式: JSON形式でシンボルごとのキャッシュ情報を保存
-
-#### キャッシュ情報の構造
-```json
-{
-  "AAPL": {
-    "Symbol": "AAPL",
-    "LastUpdate": "2025-02-26T12:00:00",
-    "StartDate": "2024-02-26T00:00:00",
-    "EndDate": "2025-02-26T00:00:00"
-  },
-  "MSFT": {
-    // 他の銘柄情報...
-  }
-}
-```
-
-#### キャッシュの更新条件
-以下の条件を満たす場合に、データが再取得されます：
-1. **市場取引時間内の場合**
-   - 米国東部時間の取引時間（9:30-16:00）内は常に最新データを取得
-   - 土日および米国の祝日は市場が閉まっているためキャッシュを使用
-
-2. **キャッシュの鮮度**
-   - 市場取引時間外の場合、最後の更新から1時間以上経過していれば更新
-   - 頻繁に実行しても不要なAPI呼び出しが発生しない設計
-
-3. **日付範囲の拡張**
-   - 要求された日付範囲がキャッシュの範囲外の場合（より古いデータや新しいデータが必要な場合）
-   - 例: キャッシュが2024-01-01から2025-02-01までのデータを持ち、2023-01-01から2025-02-26までのデータが要求された場合
-
-#### 市場時間の判定ロジック
-- 米国東部時間（東部標準時/東部夏時間）への変換
-- 夏時間の自動判定
-- 米国の祝日（元日、MLKデー、プレジデントデー、メモリアルデー、独立記念日、レイバーデー、サンクスギビング、クリスマス）の判定
-- タイムゾーン取得に失敗した場合のフォールバックメカニズム
-
-#### キャッシュ機能の利点
-1. **パフォーマンスの向上**
-   - 不要なAPI呼び出しの削減
-   - ダウンロード時間の短縮
-   - レート制限の回避
-
-2. **API利用の最適化**
-   - Yahoo Finance APIの利用を必要最小限に抑制
-   - レート制限エラーの発生頻度を低減
-
-3. **オフライン対応**
-   - 一度ダウンロードしたデータは、市場閉場時にインターネット接続なしでも利用可能
-
-4. **使用例**
+4. **指数バックオフの無効化**
    ```bash
-   # 初回実行時: すべてのデータをダウンロード
-   dotnet run -- --symbols AAPL,MSFT,GOOGL
-   
-   # 同日の再実行時（市場閉場時）: キャッシュを使用
-   dotnet run -- --symbols AAPL,MSFT,GOOGL
-   
-   # 市場取引時間内の実行: 最新データを取得
-   dotnet run -- --symbols AAPL,MSFT,GOOGL
+   dotnet run -- --sp500 --no-exponential
    ```
+   - リトライ時の指数バックオフを無効化
+   - デフォルトは有効
 
-### 依存関係
-- Polly: リトライ処理
-- CsvHelper: CSV操作
-- HtmlAgilityPack: HTML解析
+#### エラー処理とリトライ戦略
 
-## 最近のアップデート
+このツールは、Yahoo Finance APIからのデータ取得時に発生する可能性のあるエラーを適切に処理するために、堅牢なリトライ戦略を実装しています。
 
-### コマンドライン引数処理の改善（2025-02-26）
-アプリケーションのユーザビリティを向上させるため、コマンドライン引数処理を改善しました：
-1. **ヘルプメッセージの強化**
-   - 引数なしで実行した場合に自動的にヘルプを表示
-   - `--help`または`-h`オプションでヘルプを表示
-   - 詳細なオプション説明と使用例の提供
+1. **指数バックオフ**
 
-2. **エラーハンドリングの強化**
-   - 無効な引数の検出と適切なエラーメッセージの表示
-   - 必須引数（シンボルソース）が指定されていない場合の具体的なガイダンス
-   - エラーメッセージ表示後にヘルプ情報を提供
+   指数バックオフは、リクエストが失敗した場合に再試行間隔を徐々に長くする戦略です。この戦略には以下のような利点があります：
 
-3. **使用例**
-   ```bash
-   # ヘルプの表示
-   dotnet run -- --help
-   
-   # 無効な引数を指定した場合（エラーメッセージとヘルプが表示されます）
-   dotnet run -- --invalid-option
-   
-   # 引数なしで実行した場合（ヘルプが表示されます）
-   dotnet run
-   ```
+   - **サーバー負荷の軽減**: 連続的な失敗が発生した場合、サーバーへの負荷を減らします
+   - **一時的な問題の解決**: ネットワークの一時的な問題や、サーバーの一時的な過負荷が自然に解消されるのを待ちます
+   - **API制限の回避**: レート制限のあるAPIに対して、制限が解除されるまで待機時間を延長します
 
-## 現在の課題
+   **指数バックオフの仕組み**:
+   - 1回目の失敗: 基本待機時間（例: 1秒）
+   - 2回目の失敗: 基本待機時間 × 2^1（例: 2秒）
+   - 3回目の失敗: 基本待機時間 × 2^2（例: 4秒）
+   - 4回目の失敗: 基本待機時間 × 2^3（例: 8秒）
 
-### 改善が必要な項目
-1. **パフォーマンスモニタリング**
-   - ダウンロード速度の測定機能の追加
-   - メモリ使用量の監視
-   - エラー率の追跡
-   - パフォーマンス統計レポートの生成
+   このツールでは、`--delay`オプションで基本待機時間を設定でき、`--no-exponential`オプションで指数バックオフを無効化できます。
 
-2. **レポート機能**
-   - 詳細な進捗レポートの実装
-   - パフォーマンス統計の追加
-   - エラー分析の強化
-   - ダウンロード履歴の管理
+2. **ジッター（Jitter）**
 
-3. **データ品質**
-   - より厳密なデータ検証ルールの追加
-   - 異常値の検出アルゴリズムの改善
-   - 欠損データの補完方法の実装
-   - データ整合性チェックの強化
+   ジッターは、リトライ間隔にランダムな変動を加える技術です。この戦略には以下のような利点があります：
 
-4. **運用性**
-   - 設定のカスタマイズ機能
-   - バッチ処理のスケジュール機能
-   - エラー通知システムの実装
-   - 自動リカバリー機能の追加
+   - **サンダーヘッド問題の回避**: 複数のクライアントが同時に失敗した場合に、全てが同じタイミングで再試行することを防ぎます
+   - **負荷の分散**: サーバーへのリクエストが時間的に分散されるため、サーバーの負荷が平準化されます
+   - **予測不可能性の導入**: 再試行タイミングにランダム性を導入することで、パターン化されたアクセスを避けます
 
-### 将来の拡張計画
-1. **機能拡張**
-   - 複数の取引所対応
-   - リアルタイムデータの取得
-   - テクニカル指標の計算
-   - データ分析機能の追加
+   **ジッターの仕組み**:
+   - 基本待機時間（またはバックオフで計算された時間）に対して、ランダムな変動（±20%程度）を追加します
+   - 例: 基本待機時間が1000msの場合、実際の待機時間は800ms～1200msの範囲でランダムに決定されます
+   - これにより、同時に多数のリクエストが失敗した場合でも、再試行のタイミングが分散されます
 
-2. **インフラ**
-   - クラウドでの実行対応
-   - データベース統合
-   - APIサービス化
-   - スケーラビリティの向上
+   このツールでは、Pollyライブラリの機能を利用してジッターを実装しています。
 
-3. **ユーザビリティ**
-   - WebUIの実装
-   - バッチ処理の設定UI
-   - データ可視化機能
-   - レポートのカスタマイズ
+3. **HTTP 429（レート制限）の特別処理**
 
-## ライセンス
-MIT License
+   Yahoo Finance APIには、短時間に多数のリクエストを送信すると発生するレート制限があります。このツールは、HTTP 429エラー（Too Many Requests）を検出すると、通常のリトライよりも長い待機時間を設定し、APIの制限が解除されるのを待ちます。
 
-## 貢献
-プルリクエストやイシューの報告を歓迎します.
+#### エラー対応
+
+{{ ... }}

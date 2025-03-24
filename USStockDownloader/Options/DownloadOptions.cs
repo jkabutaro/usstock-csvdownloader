@@ -22,6 +22,8 @@ public class DownloadOptions
     public string? ExportListCsv { get; set; } = null;
     public bool UseIndex { get; set; } = false;
     public bool ForceIndexUpdate { get; set; } = false;
+    public bool UseSBI { get; set; } = false;
+    public bool ForceSBIUpdate { get; set; } = false;
 
     public DateTime GetStartDate() => StartDate ?? DateTime.Now.AddYears(-1);
     public DateTime GetEndDate() => EndDate ?? DateTime.Now;
@@ -48,7 +50,7 @@ public class DownloadOptions
             "Use S&P 500 symbols");
 
         var sp500ForceOption = new Option<bool>(
-            "--sp500f",
+            "--sp500-f",
             "Force update of S&P 500 symbols");
 
         var nydOption = new Option<bool>(
@@ -56,7 +58,7 @@ public class DownloadOptions
             "Use NY Dow symbols");
 
         var nydForceOption = new Option<bool>(
-            "--nydf",
+            "--nyd-f",
             "Force update of NY Dow symbols");
 
         var buffettOption = new Option<bool>(
@@ -112,8 +114,16 @@ public class DownloadOptions
             "Use major indices");
             
         var indexForceOption = new Option<bool>(
-            "--indexf",
+            "--index-f",
             "Force update of major indices list");
+
+        var useSBIOption = new Option<bool>(
+            "--sbi",
+            "Use SBI Securities to fetch US stock symbols");
+
+        var sbiForceOption = new Option<bool>(
+            "--sbi-f",
+            "Force update of SBI Securities US stock symbols");
 
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(sp500Option);
@@ -133,6 +143,8 @@ public class DownloadOptions
         rootCommand.AddOption(listCsvOption);
         rootCommand.AddOption(indexOption);
         rootCommand.AddOption(indexForceOption);
+        rootCommand.AddOption(useSBIOption);
+        rootCommand.AddOption(sbiForceOption);
 
         rootCommand.SetHandler(
             (context) =>
@@ -155,45 +167,26 @@ public class DownloadOptions
                 options.ExportListCsv = context.ParseResult.GetValueForOption(listCsvOption);
                 options.UseIndex = context.ParseResult.GetValueForOption(indexOption);
                 options.ForceIndexUpdate = context.ParseResult.GetValueForOption(indexForceOption);
-
-                // 引数の検証
-                if (!options.UseSP500 && !options.UseNYD && !options.UseBuffett && 
-                    string.IsNullOrEmpty(options.SymbolFile) && string.IsNullOrEmpty(options.Symbols) &&
-                    !options.UseIndex)
-                {
-                    Console.WriteLine("エラー: シンボルソースが指定されていません。");
-                    Console.WriteLine("以下のオプションのいずれかを指定してください: --sp500, --nyd, --buffett, --file, --symbols, --index");
-                    Console.WriteLine();
-                    ShowHelp();
-                    Environment.Exit(1);
-                }
-
-                try
-                {
-                    options.Validate();
-                }
-                catch (ArgumentException ex)
-                {
-                    Console.WriteLine($"エラー: {ex.Message}");
-                    Console.WriteLine();
-                    ShowHelp();
-                    Environment.Exit(1);
-                }
+                options.UseSBI = context.ParseResult.GetValueForOption(useSBIOption);
+                options.ForceSBIUpdate = context.ParseResult.GetValueForOption(sbiForceOption);
             });
 
-        try
+        rootCommand.Invoke(args);
+
+        // 相互に排他的なオプションのチェック
+        int sourceCount = 0;
+        if (!string.IsNullOrEmpty(options.SymbolFile)) sourceCount++;
+        if (!string.IsNullOrEmpty(options.Symbols)) sourceCount++;
+        if (options.UseSP500) sourceCount++;
+        if (options.UseNYD) sourceCount++;
+        if (options.UseBuffett) sourceCount++;
+        if (options.UseIndex) sourceCount++;
+        if (options.UseSBI) sourceCount++;
+
+        // 複数のソースが指定されている場合はエラー
+        if (sourceCount > 1)
         {
-            int exitCode = rootCommand.Invoke(args);
-            if (exitCode != 0)
-            {
-                Environment.Exit(exitCode);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"エラー: {ex.Message}");
-            Console.WriteLine();
-            ShowHelp();
+            Console.WriteLine("Error: Multiple symbol sources specified. Please use only one of: --file, --symbols, --sp500, --nyd, --buffett, --index, --sbi");
             Environment.Exit(1);
         }
 
@@ -202,66 +195,42 @@ public class DownloadOptions
 
     private static void ShowHelp()
     {
-        Console.WriteLine("米国株価データダウンローダー (US Stock Price Downloader)");
+        Console.WriteLine("US Stock Price Downloader");
+        Console.WriteLine("========================");
         Console.WriteLine();
-        Console.WriteLine("使用方法 (Usage):");
-        Console.WriteLine("  USStockDownloader.exe [オプション]");
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  USStockDownloader [options]");
         Console.WriteLine();
-        Console.WriteLine("オプション (Options):");
-        Console.WriteLine("  -f, --file <path>         銘柄リストファイルのパス");
-        Console.WriteLine("  --sp500                   S&P 500銘柄を使用");
-        Console.WriteLine("  --sp500f                  S&P 500銘柄リストを強制的に更新");
-        Console.WriteLine("  -n, --nyd                 NYダウ銘柄を使用");
-        Console.WriteLine("  --nydf                    NYダウ銘柄リストを強制的に更新");
-        Console.WriteLine("  -b, --buffett             バフェットポートフォリオ銘柄を使用");
-        Console.WriteLine("  --buffett-f               バフェットポートフォリオ銘柄リストを強制的に更新");
-        Console.WriteLine("  --index                   主要指数を使用");
-        Console.WriteLine("  --indexf                  主要指数リストを強制的に更新");
-        Console.WriteLine("  --symbols <symbols>       カンマ区切りの銘柄リスト (例: AAPL,MSFT,GOOGL)");
-        Console.WriteLine("  -p, --parallel <num>      並列ダウンロード数 (デフォルト: 3)");
-        Console.WriteLine("  -r, --retries <num>       リトライ回数 (デフォルト: 3)");
-        Console.WriteLine("  -d, --delay <ms>          リトライ間隔 (ミリ秒) (デフォルト: 1000)");
-        Console.WriteLine("  -e, --exponential         指数バックオフを使用 (デフォルト: true)");
-        Console.WriteLine("  --start-date <date>       データ取得開始日 (yyyy-MM-dd形式)");
-        Console.WriteLine("  --end-date <date>         データ取得終了日 (yyyy-MM-dd形式)");
-        Console.WriteLine("  -o, --output <dir>        出力ディレクトリ");
-        Console.WriteLine("  --listcsv <path>          銘柄リストをCSVファイルに出力 (相対パスを指定)");
-        Console.WriteLine("  -h, --help                ヘルプを表示");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -f, --file <path>        Path to the symbol file");
+        Console.WriteLine("  --sp500                  Use S&P 500 symbols");
+        Console.WriteLine("  --sp500-f                Force update of S&P 500 symbols");
+        Console.WriteLine("  -n, --nyd                Use NY Dow symbols");
+        Console.WriteLine("  --nyd-f                  Force update of NY Dow symbols");
+        Console.WriteLine("  -b, --buffett            Use Buffett's portfolio symbols");
+        Console.WriteLine("  --buffett-f              Force update of Buffett's portfolio symbols");
+        Console.WriteLine("  --symbols <symbols>      Comma-separated list of stock symbols");
+        Console.WriteLine("  -p, --parallel <count>   Maximum number of concurrent downloads (default: 3)");
+        Console.WriteLine("  -r, --retries <count>    Maximum number of retries (default: 3)");
+        Console.WriteLine("  -d, --delay <ms>         Retry delay in milliseconds (default: 1000)");
+        Console.WriteLine("  -e, --exponential        Use exponential backoff for retries (default: true)");
+        Console.WriteLine("  --start-date <date>      Start date for historical data (format: yyyy-MM-dd)");
+        Console.WriteLine("  --end-date <date>        End date for historical data (format: yyyy-MM-dd)");
+        Console.WriteLine("  -o, --output <dir>       Output directory for the downloaded data");
+        Console.WriteLine("  --listcsv <path>         Export symbol list to CSV file");
+        Console.WriteLine("  --index                  Use major indices");
+        Console.WriteLine("  --index-f                Force update of major indices list");
+        Console.WriteLine("  --sbi                    Use SBI Securities to fetch US stock symbols");
+        Console.WriteLine("  --sbi-f                  Force update of SBI Securities US stock symbols");
+        Console.WriteLine("  -h, --help               Show help information");
         Console.WriteLine();
-        Console.WriteLine("例 (Examples):");
-        Console.WriteLine("  USStockDownloader.exe --sp500");
-        Console.WriteLine("  USStockDownloader.exe --nyd --output ./data");
-        Console.WriteLine("  USStockDownloader.exe --symbols AAPL,MSFT,GOOGL --start-date 2020-01-01");
-        Console.WriteLine("  USStockDownloader.exe --file symbols.txt --parallel 5");
-        Console.WriteLine("  USStockDownloader.exe --index --listcsv");
-        Console.WriteLine("  USStockDownloader.exe --index --indexf");
-    }
-
-    public void Validate()
-    {
-        if (MaxConcurrentDownloads <= 0)
-        {
-            throw new ArgumentException("並列ダウンロード数は1以上である必要があります。");
-        }
-
-        if (MaxRetries < 0)
-        {
-            throw new ArgumentException("リトライ回数は0以上である必要があります。");
-        }
-
-        if (RetryDelay < 0)
-        {
-            throw new ArgumentException("リトライ間隔は0以上である必要があります。");
-        }
-
-        if (StartDate.HasValue && EndDate.HasValue && StartDate.Value > EndDate.Value)
-        {
-            throw new ArgumentException("開始日は終了日より前である必要があります。");
-        }
-
-        if (!string.IsNullOrEmpty(ExportListCsv) && (System.IO.Path.IsPathRooted(ExportListCsv) || ExportListCsv.Contains(":")))
-        {
-            throw new ArgumentException("--listcsvオプションには相対パスを指定してください。絶対パスは使用できません。");
-        }
+        Console.WriteLine("Examples:");
+        Console.WriteLine("  USStockDownloader --sp500");
+        Console.WriteLine("  USStockDownloader --nyd --start-date 2020-01-01 --end-date 2020-12-31");
+        Console.WriteLine("  USStockDownloader --symbols AAPL,MSFT,GOOG");
+        Console.WriteLine("  USStockDownloader --file symbols.txt");
+        Console.WriteLine("  USStockDownloader --nyd --listcsv us_stock_list.csv");
+        Console.WriteLine("  USStockDownloader --index");
+        Console.WriteLine("  USStockDownloader --sbi");
     }
 }

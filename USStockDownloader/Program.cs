@@ -91,11 +91,88 @@ namespace USStockDownloader
                 // コマンドライン引数の解析
                 var options = DownloadOptions.Parse(args);
 
-                List<string> symbols;
+                List<string> symbols = new List<string>();
+                
                 var symbolProvider = serviceProvider.GetRequiredService<SymbolListProvider>();
 
                 try
                 {
+                    // CSVリスト出力
+                    if (!string.IsNullOrEmpty(options.ExportListCsv))
+                    {
+                        var symbolListExportService = serviceProvider.GetRequiredService<SymbolListExportService>();
+                        
+                        if (options.UseNYD)
+                        {
+                            // NYダウ構成銘柄リストをCSVに出力
+                            if (logger != null)
+                            {
+                                logger.LogInformation("NYダウ構成銘柄リストをCSVファイルに出力します...");
+                                var outputPath = options.ExportListCsv;
+                                await symbolListExportService.ExportNYDListToCsvAsync(outputPath, options.ForceNYDUpdate);
+                                logger.LogInformation("NYダウ構成銘柄リストをCSVファイルに出力しました: {Path}", outputPath);
+                            }
+                            else
+                            {
+                                Console.WriteLine("NYダウ構成銘柄リストをCSVファイルに出力します...");
+                                var outputPath = options.ExportListCsv;
+                                await symbolListExportService.ExportNYDListToCsvAsync(outputPath, options.ForceNYDUpdate);
+                                Console.WriteLine($"NYダウ構成銘柄リストをCSVファイルに出力しました: {outputPath}");
+                            }
+                            return;
+                        }
+                        else if (options.UseSP500)
+                        {
+                            // S&P 500銘柄リストをCSVに出力
+                            Console.WriteLine("Exporting S&P 500 symbol list to CSV...");
+                            if (options.ForceSP500Update)
+                            {
+                                Console.WriteLine("Forcing update of S&P 500 symbols...");
+                                await serviceProvider.GetRequiredService<SP500CacheService>().ForceUpdateAsync();
+                            }
+                            await symbolListExportService.ExportSymbolListToCsv(options.ExportListCsv);
+                            Console.WriteLine($"Exported S&P 500 symbol list to {options.ExportListCsv}");
+                            return;
+                        }
+                        else if (options.UseBuffett)
+                        {
+                            // バフェットポートフォリオ銘柄リストをCSVに出力
+                            Console.WriteLine("Exporting Buffett portfolio symbol list to CSV...");
+                            await symbolListExportService.ExportBuffettListToCsvAsync(options.ExportListCsv, options.ForceBuffettUpdate);
+                            Console.WriteLine($"Exported Buffett portfolio symbol list to {options.ExportListCsv}");
+                            return;
+                        }
+                        else if (options.UseIndex)
+                        {
+                            // 主要指数リストをCSVに出力
+                            Console.WriteLine("Exporting major indices list to CSV...");
+                            await symbolListExportService.ExportIndexListToCsvAsync(options.ExportListCsv, options.ForceIndexUpdate);
+                            Console.WriteLine($"Exported major indices list to {options.ExportListCsv}");
+                            return;
+                        }
+                        else if (options.UseSBI)
+                        {
+                            // SBI証券取扱いの銘柄リストをCSVに出力
+                            Console.WriteLine("Exporting SBI Securities US stock list to CSV...");
+                            await symbolListExportService.ExportSBIListToCsvAsync(options.ExportListCsv);
+                            Console.WriteLine($"Exported SBI Securities US stock list to {options.ExportListCsv}");
+                            return;
+                        }
+                        else
+                        {
+                            if (logger != null)
+                            {
+                                logger.LogError("CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi)");
+                            }
+                            else
+                            {
+                                Console.WriteLine("CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi)");
+                            }
+                            return;
+                        }
+                    }
+                    
+                    // 銘柄リストを取得
                     if (options.UseSP500)
                     {
                         Console.WriteLine("Fetching S&P 500 symbols...");
@@ -105,20 +182,6 @@ namespace USStockDownloader
                             await serviceProvider.GetRequiredService<SP500CacheService>().ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(true, false, false, null);
-                        
-                        // --listcsvオプションが指定されている場合は、銘柄リストをCSVファイルに出力
-                        if (options.ExportListCsv != null)
-                        {
-                            Console.WriteLine($"Exporting symbol list to CSV in {options.ExportListCsv}...");
-                            await serviceProvider.GetRequiredService<SymbolListExportService>().ExportSymbolListToCsv(options.ExportListCsv);
-                            Console.WriteLine("Symbol list exported successfully.");
-                            
-                            // CSVエクスポートのみを行う場合は、ここで終了
-                            if (!args.Contains("--download"))
-                            {
-                                return;
-                            }
-                        }
                     }
                     else if (options.UseNYD)
                     {
@@ -130,21 +193,6 @@ namespace USStockDownloader
                             await nydService.ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(false, true, false, null);
-                        
-                        // --listcsvオプションが指定されている場合は、NYダウ構成銘柄リストをCSVファイルに出力
-                        if (options.ExportListCsv != null)
-                        {
-                            Console.WriteLine($"Exporting NY Dow symbol list to CSV in {options.ExportListCsv}...");
-                            await serviceProvider.GetRequiredService<SymbolListExportService>()
-                                .ExportNYDListToCsvAsync(options.ExportListCsv, options.ForceNYDUpdate);
-                            Console.WriteLine("NY Dow symbol list exported successfully.");
-                            
-                            // CSVエクスポートのみを行う場合は、ここで終了
-                            if (!args.Contains("--download"))
-                            {
-                                return;
-                            }
-                        }
                     }
                     else if (options.UseBuffett)
                     {
@@ -156,21 +204,6 @@ namespace USStockDownloader
                             await buffettService.ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(false, false, true, null);
-                        
-                        // --listcsvオプションが指定されている場合は、バフェットポートフォリオ銘柄リストをCSVファイルに出力
-                        if (options.ExportListCsv != null)
-                        {
-                            Console.WriteLine($"Exporting Buffett portfolio list to CSV in {options.ExportListCsv}...");
-                            await serviceProvider.GetRequiredService<SymbolListExportService>()
-                                .ExportBuffettListToCsvAsync(options.ExportListCsv, options.ForceBuffettUpdate);
-                            Console.WriteLine("Buffett portfolio list exported successfully.");
-                            
-                            // CSVエクスポートのみを行う場合は、ここで終了
-                            if (!args.Contains("--download"))
-                            {
-                                return;
-                            }
-                        }
                     }
                     else if (options.UseIndex)
                     {
@@ -184,21 +217,27 @@ namespace USStockDownloader
                         
                         symbols = indexSymbols.Select(i => i.Symbol).ToList();
                         Console.WriteLine($"Retrieved {symbols.Count} index symbols.");
+                    }
+                    else if (options.UseSBI)
+                    {
+                        Console.WriteLine("Fetching stock symbols from SBI Securities...");
                         
-                        // --listcsvオプションが指定されている場合は、指数リストをCSVファイルに出力
-                        if (options.ExportListCsv != null)
+                        // SBI証券から銘柄リストを取得
+                        var sbiStockFetcher = serviceProvider.GetRequiredService<SBIStockFetcher>();
+                        
+                        if (options.ForceSBIUpdate)
                         {
-                            Console.WriteLine($"Exporting index list to CSV in {options.ExportListCsv}...");
-                            await serviceProvider.GetRequiredService<SymbolListExportService>()
-                                .ExportIndexListToCsvAsync(options.ExportListCsv, options.ForceIndexUpdate);
-                            Console.WriteLine("Index list exported successfully.");
-                            
-                            // CSVエクスポートのみを行う場合は、ここで終了
-                            if (!args.Contains("--download"))
-                            {
-                                return;
-                            }
+                            Console.WriteLine("Forcing update of SBI Securities stock symbols...");
+                            var sbiSymbols = await sbiStockFetcher.ForceUpdateAsync();
+                            symbols = sbiSymbols.Select(s => s.Symbol).ToList();
                         }
+                        else
+                        {
+                            var sbiSymbols = await sbiStockFetcher.FetchStockSymbolsAsync();
+                            symbols = sbiSymbols.Select(s => s.Symbol).ToList();
+                        }
+
+                        Console.WriteLine($"Retrieved {symbols.Count} symbols from SBI Securities.");
                     }
                     else if (!string.IsNullOrEmpty(options.SymbolFile))
                     {
@@ -279,6 +318,7 @@ namespace USStockDownloader
             services.AddSingleton<IndexCacheService>();
             services.AddSingleton<IndexListService>();
             services.AddSingleton<SymbolListExportService>();
+            services.AddSingleton<SBIStockFetcher>();
             
             Console.WriteLine("Services registered.");
             
