@@ -11,8 +11,10 @@
 - S&P 500銘柄の自動取得（Wikipediaから）
 - ニューヨークダウ工業株30種の銘柄の自動取得（Wikipediaから）
 - S&P 500銘柄リストのCSV出力（銘柄コード、名前、市場、種別情報を含む）
+- NYダウ銘柄リストのCSV出力（銘柄コード、名前（日本語名付き）、市場、種別情報を含む）
 - 主要指数リストのCSV出力
-- バフェットポートフォリオ銘柄リストのCSV出力
+- バフェットポートフォリオ銘柄リストのCSV出力（Wikipediaから）
+- Yahoo Finance APIで取得できる全銘柄リストのCSV出力
 
 ### エラー処理とリトライ機能
 - Pollyライブラリを使用したリトライ機構
@@ -27,10 +29,20 @@
   - Open/CloseがHigh/Lowの範囲内にあることの確認
 - 欠損データの検出と除外
 
+### テスト機能
+- 全銘柄取得機能のテスト（Yahoo Finance、SBI証券などの複数ソースから）
+- 取得した銘柄の市場別・タイプ別の内訳表示
+
 ### エラーレポート機能
 - 失敗した銘柄の詳細レポート生成
 - エラータイプごとの集計
 - 再試行結果の記録
+
+## パフォーマンス指標
+
+- S&P 500銘柄のダウンロード成功率：99.4%（503銘柄中500銘柄成功）
+- 失敗した銘柄：ETR、BRK.B、BF.B
+  - 主な失敗理由：ピリオドを含むシンボルの処理とデータ欠落
 
 ## リポジトリ情報
 
@@ -62,26 +74,41 @@ dotnet run -- --sp500
 # S&P 500銘柄リストを強制的に更新してダウンロード
 dotnet run -- --sp500f
 
-# ニューヨークダウ工業株30種の銘柄を自動取得してダウンロード
+# NYダウ銘柄リストを自動取得してダウンロード
 dotnet run -- -n
 
-# ニューヨークダウ工業株30種の銘柄リストを強制的に更新してダウンロード
-dotnet run -- --nydf
+# NYダウ銘柄リストを強制的に更新してダウンロード
+dotnet run -- --nyd-f
 
-# ニューヨークダウ工業株30種の銘柄リストをCSVファイルに出力
+# NYダウ銘柄リストをCSVファイルに出力
 dotnet run -- --nyd --listcsv output/nyd_list.csv
 
-# バフェット・ポートフォリオの銘柄を自動取得してダウンロード（開発中）
+# NYダウ銘柄リストを強制的に更新してCSVファイルに出力
+dotnet run -- --nyd --nyd-f --listcsv output/nyd_list.csv
+
+# NYダウ構成銘柄リストをCSVファイルに出力（Shift-JISエンコーディング）
+dotnet run -- --nyd --listcsv
+
+# バフェットポートフォリオの銘柄を自動取得してダウンロード
 dotnet run -- -b
 
-# バフェット・ポートフォリオの銘柄リストを強制的に更新してダウンロード（開発中）
+# バフェットポートフォリオの銘柄リストを強制的に更新してダウンロード
 dotnet run -- --buffett-f
 
-# バフェット・ポートフォリオの銘柄リストをCSVファイルに出力
+# バフェットポートフォリオの銘柄リストをCSVファイルに出力
 dotnet run -- --buffett --listcsv output/buffett_list.csv
 
-# バフェット・ポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
+# バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
 dotnet run -- --buffett --buffett-f --listcsv output/buffett_list.csv
+
+# 全銘柄リストをCSVファイルに出力
+dotnet run -- --all --listcsv output/all_stock_list.csv
+
+# 全銘柄リストを強制的に更新してCSVファイルに出力
+dotnet run -- --all --all-f --listcsv output/all_stock_list.csv
+
+# 全銘柄取得機能のテスト実行
+dotnet run -- --testall
 
 # 特定の銘柄リストをダウンロード
 dotnet run -- --file symbols.txt
@@ -97,6 +124,9 @@ dotnet run -- --index --listcsv output/index_list.csv
 
 # 主要指数リストを強制的に更新してCSVファイルに出力
 dotnet run -- --index --indexf --listcsv output/index_list.csv
+
+# Yahoo Finance APIで取得できる全銘柄リストをCSVファイルに出力
+dotnet run -- --all --listcsv output/all_stocks_list.csv
 ```
 
 #### 利用可能なオプション
@@ -104,10 +134,10 @@ dotnet run -- --index --indexf --listcsv output/index_list.csv
 |------------|------|--------------|
 | `--sp500` | S&P 500銘柄を自動取得してダウンロード | - |
 | `--sp500f` | S&P 500銘柄リストを強制的に更新してダウンロード | - |
-| `-n, --nyd` | ニューヨークダウ工業株30種の銘柄を自動取得してダウンロード | - |
-| `--nydf` | NY Dowの銘柄リストを強制的に更新 | - |
-| `-b, --buffett` | バフェット・ポートフォリオの銘柄を自動取得してダウンロード（開発中） | - |
-| `--buffett-f` | バフェット・ポートフォリオの銘柄リストを強制的に更新してダウンロード（開発中） | - |
+| `-n, --nyd` | NYダウ銘柄リストを自動取得してダウンロード | - |
+| `--nyd-f` | NYダウ銘柄リストを強制的に更新 | - |
+| `-b, --buffett` | バフェットポートフォリオの銘柄を自動取得してダウンロード | - |
+| `--buffett-f` | バフェットポートフォリオの銘柄リストを強制的に更新してダウンロード | - |
 | `--file <path>` | 指定したファイルから銘柄リストを読み込み | - |
 | `--symbols <symbols>` | カンマ区切りで個別銘柄を指定（例：AAPL,MSFT,GOOGL） | - |
 | `--concurrent <num>` | 並列ダウンロード数 | 3 |
@@ -122,12 +152,55 @@ dotnet run -- --index --indexf --listcsv output/index_list.csv
 | `--listcsv <path>` | 銘柄リストをCSVファイルに出力（相対パスを指定） | - |
 | `--index` | 主要指数を使用 | - |
 | `--indexf` | 主要指数リストを強制的に更新 | - |
+| `--all` | Yahoo Finance APIで取得できる全銘柄をリストアップ | - |
+
+## データ形式
+
+### 株価データCSVファイル
+
+ダウンロードしたデータは、`output` ディレクトリに銘柄ごとのCSVファイルとして保存されます。
+
+#### CSVファイル形式
+```csv
+Date,Open,High,Low,Close,AdjClose,Volume
+20240225,180.15,182.34,179.89,181.56,181.56,75234567
+```
+
+| カラム | 説明 | 型 |
+|--------|------|-----|
+| Date | 取引日（yyyymmdd形式の整数値） | 整数 |
+| Open | 始値 | 数値 |
+| High | 高値 | 数値 |
+| Low | 安値 | 数値 |
+| Close | 終値 | 数値 |
+| AdjClose | 調整後終値 | 数値 |
+| Volume | 出来高 | 整数 |
+
+### 銘柄リストCSVファイル（--listcsvオプション使用時）
+
+`--listcsv`オプションを使用すると、銘柄リストがCSVファイルとして出力されます。出力されるCSVファイルの形式は以下の通りです：
+
+```csv
+code,name,market,type
+A,Agilent Technologies アジレント テクノロジーズ,NYSE,stock
+AA,Alcoa アルコア,NYSE,stock
+AACI,Armada Acquisition Corp1 アルマダ アクイジション1,NASDAQ,stock
+AADI,Aadi Biosciences Inc アーディ バイオサイエンシズ,NASDAQ,stock
+```
+
+| カラム | 説明 | 型 |
+|--------|------|-----|
+| code | ティッカーシンボル | 文字列 |
+| name | 銘柄名（日本語名付き） | 文字列 |
+| market | 市場(NYSEやNASDAQ) | 文字列 |
+| type | 種類(stockやindexやetf) | 文字列 |
+
+NYダウ銘柄リスト（`--nyd --listcsv`）の場合は、Shift-JISエンコーディングで出力され、企業名に日本語名が付加されます。出力ファイル名はデフォルトで`us_stock_list.csv`となります。その他のリスト（S&P 500、バフェットポートフォリオなど）はUTF-8エンコーディングで出力されます。
 
 ## 免責事項と注意点
 
 ### データソースについて
 本アプリケーションは以下のソースから銘柄情報を取得しています：
-
 1. **S&P 500銘柄リスト**
    - 取得元: Wikipediaの「List of S&P 500 companies」ページ
    - URL: https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
@@ -138,7 +211,10 @@ dotnet run -- --index --indexf --listcsv output/index_list.csv
    - 取得元: Wikipediaの「Dow Jones Industrial Average」ページ
    - URL: https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average
    - 取得方法: HTMLテーブルのスクレイピング
-   - 更新頻度: 24時間キャッシュ（`--nydf`オプションで強制更新可能）
+   - 更新頻度: 24時間キャッシュ（`--nyd-f`オプションで強制更新可能）
+   - 出力ファイル: `us_stock_list.csv`（`--nyd --listcsv`オプション使用時）
+   - 出力形式: 銘柄コード、企業名（日本語名付き）、マーケット情報、タイプ情報
+   - エンコーディング: Shift-JIS（日本語環境での利用を考慮）
 
 3. **バフェットポートフォリオ銘柄リスト**
    - 取得元: Wikipediaの「List of assets owned by Berkshire Hathaway」ページ
@@ -152,8 +228,12 @@ dotnet run -- --index --indexf --listcsv output/index_list.csv
    - フォールバック: スクレイピングに失敗した場合は内部定義のデフォルトリストを使用
    - 更新頻度: 24時間キャッシュ（`--indexf`オプションで強制更新可能）
 
-これらの情報は以下の点に注意してください：
+5. **全銘柄リスト**
+   - 取得元: Yahoo Finance API
+   - 取得方法: APIリクエスト
+   - 更新頻度: リクエストごとに最新情報を取得
 
+これらの情報は以下の点に注意してください：
 - Wikipediaの記事内容はいつでも変更される可能性があり、その結果として正確な情報が取得できない場合があります
 - Wikipediaのページ構造が変更されると、データ抽出ロジックが機能しなくなる可能性があります
 - 最新の情報を確実に反映しているという保証はありません
@@ -171,7 +251,6 @@ dotnet run -- --index --indexf --listcsv output/index_list.csv
 ### データソース
 
 バフェットポートフォリオの銘柄リストは、以下の方法で取得しています：
-
 1. Wikipediaの「List of assets owned by Berkshire Hathaway」ページからスクレイピングして取得
 2. スクレイピングに失敗した場合、主要な保有銘柄のフォールバックリストを使用
 
@@ -236,7 +315,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
    - 内容:
      - 失敗した銘柄のリスト
      - エラータイプごとの集計
-     - リトライ結果の詳細
+     - 再試行結果の詳細
 
 3. **銘柄リストCSV**
    - 場所: `output/us_stock_list.csv`
@@ -279,7 +358,20 @@ Date,Open,High,Low,Close,AdjClose,Volume
      AMZN,Amazon アマゾン,NASDAQ,stock
      ```
 
-6. **ダウンロードログ**
+6. **全銘柄リストCSV**
+   - 場所: `output/all_stocks_list.csv`
+   - 内容:
+     - Yahoo Finance APIで取得できる全銘柄のリスト（`--all --listcsv`で出力）
+     - 形式: code,name,market,type
+     - エンコーディング: Shift-JIS
+   - 例:
+     ```csv
+     code,name,market,type
+     AAPL,Apple Inc.,NASDAQ,stock
+     MSFT,Microsoft Corporation,NASDAQ,stock
+     ```
+
+7. **ダウンロードログ**
    - 場所: `logs/download_<timestamp>.log`
    - 内容:
      - 詳細な実行ログ
@@ -297,11 +389,11 @@ Date,Open,High,Low,Close,AdjClose,Volume
    - 全銘柄の1年分のデータをダウンロード
    - キャッシュされた銘柄リストがある場合はそれを使用（更新が必要な場合は`--sp500f`オプションを使用）
 
-2. **ニューヨークダウ工業株30種のダウンロード**
+2. **NYダウ銘柄リストのダウンロード**
    ```bash
    dotnet run -- --nyd
    ```
-   - Wikipediaから最新のNY Dow 30銘柄リストを取得
+   - Wikipediaから最新のNYダウ銘柄リストを取得
    - 全銘柄の1年分のデータをダウンロード
    - S&P 500に比べて銘柄数が少ないため短時間で完了
 
@@ -358,6 +450,12 @@ Date,Open,High,Low,Close,AdjClose,Volume
     ```
     - バフェットポートフォリオの銘柄リストを強制的に更新してCSVファイルに出力
 
+11. **全銘柄リストのCSV出力**
+    ```bash
+    dotnet run -- --all --listcsv output/all_stocks_list.csv
+    ```
+    - Yahoo Finance APIで取得できる全銘柄のリストをCSVファイルに出力
+
 #### パフォーマンスチューニング
 
 1. **並列数の調整**
@@ -400,7 +498,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
 ## パフォーマンス指標
 
 ### 成功率
-- S&P 500銘柄のダウンロード成功率：99.8%（最新のテストで503銘柄中502銘柄成功）
+- S&P 500銘柄のダウンロード成功率：99.4%（最新のテストで503銘柄中500銘柄成功）
 - 主な改善点：
   - ピリオドを含むシンボル（BRK.B、BF.B）の処理を改善
   - レート制限への対応を強化
@@ -434,7 +532,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 ### キャッシュ機能の詳細
 #### 概要
-- アプリケーションはダウンロードした株価データをローカルにキャッシュし、不要なAPI呼び出しを防ぎます
+- アプリケーションはダウンロードした株価データをローカルにキャッシュし、不要なAPI呼び出しの防止します
 - キャッシュは銘柄ごとに管理され、各銘柄の最終更新時刻とデータの日付範囲を記録します
 - キャッシュの状態に基づいて、データを再取得するかどうかを判断します
 
@@ -459,7 +557,6 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 #### キャッシュの更新条件
 以下の条件を満たす場合に、データが再取得されます：
-
 1. **市場取引時間内の場合**
    - 米国東部時間の取引時間（9:30-16:00）内は常に最新データを取得
    - 土日および米国の祝日は市場が閉まっているためキャッシュを使用
@@ -480,7 +577,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 #### キャッシュ機能の利点
 1. **パフォーマンスの向上**
-   - 不要なAPI呼び出しを削減
+   - 不要なAPI呼び出しの削減
    - ダウンロード時間の短縮
    - レート制限の回避
 
@@ -512,7 +609,6 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 ### コマンドライン引数処理の改善（2025-02-26）
 アプリケーションのユーザビリティを向上させるため、コマンドライン引数処理を改善しました：
-
 1. **ヘルプメッセージの強化**
    - 引数なしで実行した場合に自動的にヘルプを表示
    - `--help`または`-h`オプションでヘルプを表示
