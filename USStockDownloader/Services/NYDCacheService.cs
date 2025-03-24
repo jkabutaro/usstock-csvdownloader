@@ -49,6 +49,14 @@ public class NYDCacheService
                 if (_cachedSymbols != null)
                 {
                     _logger.LogInformation("Loaded {Count} NY Dow symbols from cache", _cachedSymbols.Count);
+                    
+                    // デバッグ用：キャッシュから読み込んだ銘柄情報をログに出力
+                    foreach (var symbol in _cachedSymbols)
+                    {
+                        _logger.LogDebug("Symbol: {Symbol}, Name: {Name}, Market: {Market}, Type: {Type}", 
+                            symbol.Symbol, symbol.Name, symbol.Market, symbol.Type);
+                    }
+                    
                     return _cachedSymbols;
                 }
             }
