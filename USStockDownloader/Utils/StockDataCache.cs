@@ -9,6 +9,7 @@ namespace USStockDownloader.Utils
         public DateTime LastUpdate { get; set; }
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
+        public DateTime LastTradingDate { get; set; } 
     }
 
     public static class StockDataCache
@@ -18,7 +19,6 @@ namespace USStockDownloader.Utils
             "USStockDownloader");
         private static readonly string CacheFile = Path.Combine(CacheDirectory, "stock_data_cache.json");
 
-        // 米国東部時間の取引時間（9:30-16:00）
         private static readonly TimeSpan MarketOpenTime = TimeSpan.FromHours(9.5);
         private static readonly TimeSpan MarketCloseTime = TimeSpan.FromHours(16);
 
@@ -26,12 +26,10 @@ namespace USStockDownloader.Utils
         {
             try
             {
-                // まずローカル時間をUTCに変換
                 var utcTime = localTime.ToUniversalTime();
 
                 try
                 {
-                    // Windows環境
                     var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
                     return TimeZoneInfo.ConvertTimeFromUtc(utcTime, easternZone);
                 }
@@ -39,22 +37,19 @@ namespace USStockDownloader.Utils
                 {
                     try
                     {
-                        // Linux/Unix環境
                         var easternZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
                         return TimeZoneInfo.ConvertTimeFromUtc(utcTime, easternZone);
                     }
                     catch
                     {
-                        // タイムゾーンが見つからない場合は手動で計算
                         var isDst = IsInDaylightSavingTime(utcTime);
-                        var offset = isDst ? -4 : -5;  // EDT: UTC-4, EST: UTC-5
+                        var offset = isDst ? -4 : -5;  
                         return utcTime.AddHours(offset);
                     }
                 }
             }
             catch (Exception ex)
             {
-                // 時間変換に完全に失敗した場合はログを出力
                 Console.WriteLine($"Warning: Time conversion failed. Using local time. Error: {ex.Message}");
                 return localTime;
             }
@@ -64,13 +59,11 @@ namespace USStockDownloader.Utils
         {
             var year = date.Year;
 
-            // 3月の第2日曜日を計算
             var marchSecondSunday = new DateTime(year, 3, 1).AddDays((14 - (int)new DateTime(year, 3, 1).DayOfWeek) % 7);
-            var dstStart = marchSecondSunday.AddHours(2); // 午前2時に開始
+            var dstStart = marchSecondSunday.AddHours(2); 
 
-            // 11月の第1日曜日を計算
             var novemberFirstSunday = new DateTime(year, 11, 1).AddDays((7 - (int)new DateTime(year, 11, 1).DayOfWeek) % 7);
-            var dstEnd = novemberFirstSunday.AddHours(2); // 午前2時に終了
+            var dstEnd = novemberFirstSunday.AddHours(2); 
 
             return date >= dstStart && date < dstEnd;
         }
@@ -81,27 +74,108 @@ namespace USStockDownloader.Utils
             {
                 var easternTime = ConvertToEasternTime(DateTime.Now);
                 
-                // 土日は市場が閉まっている
                 if (easternTime.DayOfWeek == DayOfWeek.Saturday || easternTime.DayOfWeek == DayOfWeek.Sunday)
                     return false;
 
-                // 主要な米国の祝日をチェック
                 if (IsUsHoliday(easternTime))
                     return false;
 
                 var timeOfDay = easternTime.TimeOfDay;
                 var isMarketOpen = timeOfDay >= MarketOpenTime && timeOfDay <= MarketCloseTime;
 
-                // デバッグ用のログ出力
                 Console.WriteLine($"Market status check - Eastern Time: {easternTime:yyyy-MM-dd HH:mm:ss}, Market is {(isMarketOpen ? "open" : "closed")}");
 
                 return isMarketOpen;
             }
             catch (Exception ex)
             {
-                // 時間判定に失敗した場合は安全のためfalseを返す
                 Console.WriteLine($"Warning: Market hours check failed. Error: {ex.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// 指定された日付が将来の取引日である場合、最新の取引日を返します。
+        /// 現在の東部時間の日付より後の日付や、同じ日でも市場がまだ閉じていない場合は
+        /// 最新の取引日に調整します。
+        /// </summary>
+        /// <param name="date">調整する日付</param>
+        /// <returns>調整された日付（最新の取引日）</returns>
+        public static DateTime AdjustToLatestTradingDay(DateTime date)
+        {
+            try
+            {
+                // 現在の東部時間を取得
+                DateTime easternTime = ConvertToEasternTime(DateTime.Now);
+                
+                // 指定された日付が現在の東部時間の日付より後の場合
+                if (date.Date > easternTime.Date)
+                {
+                    // 最新の取引日を返す
+                    return GetLastTradingDay();
+                }
+                
+                // 指定された日付が現在の東部時間の日付と同じで、市場がまだ閉じていない場合
+                if (date.Date == easternTime.Date && !IsMarketClosed())
+                {
+                    // 前営業日を返す
+                    return GetPreviousTradingDay(easternTime);
+                }
+                
+                // それ以外の場合は指定された日付をそのまま返す
+                return date;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Date adjustment failed. Using original date. Error: {ex.Message}");
+                return date;
+            }
+        }
+
+        /// <summary>
+        /// 指定された日付の前営業日を返します。
+        /// </summary>
+        /// <param name="date">基準日</param>
+        /// <returns>前営業日</returns>
+        private static DateTime GetPreviousTradingDay(DateTime date)
+        {
+            var previousDay = date.AddDays(-1);
+            
+            while (true)
+            {
+                if (!IsUsHoliday(previousDay) && 
+                    previousDay.DayOfWeek != DayOfWeek.Saturday && 
+                    previousDay.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    return previousDay.Date;
+                }
+                previousDay = previousDay.AddDays(-1);
+            }
+        }
+
+        private static bool IsMarketClosed()
+        {
+            return !IsMarketHours();
+        }
+
+        public static DateTime GetLastTradingDay()
+        {
+            var now = ConvertToEasternTime(DateTime.Now);
+            var date = now.Date;
+            
+            if (now.TimeOfDay > MarketCloseTime && !IsUsHoliday(date) && 
+                date.DayOfWeek != DayOfWeek.Saturday && date.DayOfWeek != DayOfWeek.Sunday)
+            {
+                return date;
+            }
+            
+            while (true)
+            {
+                date = date.AddDays(-1);
+                if (!IsUsHoliday(date) && date.DayOfWeek != DayOfWeek.Saturday && date.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    return date;
+                }
             }
         }
 
@@ -111,24 +185,20 @@ namespace USStockDownloader.Utils
             var day = date.Day;
             var dayOfWeek = date.DayOfWeek;
 
-            // 固定の祝日
-            if ((month == 1 && day == 1) ||   // 元日
-                (month == 7 && day == 4) ||   // 独立記念日
-                (month == 12 && day == 25))   // クリスマス
+            if ((month == 1 && day == 1) ||   
+                (month == 7 && day == 4) ||   
+                (month == 12 && day == 25))   
                 return true;
 
-            // 第3月曜日の祝日
-            if ((month == 1 && dayOfWeek == DayOfWeek.Monday && day >= 15 && day <= 21) || // マーティン・ルーサー・キング・ジュニアの日
-                (month == 2 && dayOfWeek == DayOfWeek.Monday && day >= 15 && day <= 21) || // プレジデントデー
-                (month == 9 && dayOfWeek == DayOfWeek.Monday && day >= 1 && day <= 7))     // レイバーデー
+            if ((month == 1 && dayOfWeek == DayOfWeek.Monday && day >= 15 && day <= 21) || 
+                (month == 2 && dayOfWeek == DayOfWeek.Monday && day >= 15 && day <= 21) || 
+                (month == 9 && dayOfWeek == DayOfWeek.Monday && day >= 1 && day <= 7))     
                 return true;
 
-            // メモリアルデー（5月の最終月曜日）
             if (month == 5 && dayOfWeek == DayOfWeek.Monday && 
                 day > (31 - 7) && day <= 31)
                 return true;
 
-            // サンクスギビング（11月の第4木曜日）
             if (month == 11 && dayOfWeek == DayOfWeek.Thursday && 
                 day >= 22 && day <= 28)
                 return true;
@@ -149,7 +219,6 @@ namespace USStockDownloader.Utils
             }
             catch
             {
-                // キャッシュ読み込みに失敗した場合は無視
             }
             return new Dictionary<string, StockDataCacheInfo>();
         }
@@ -164,7 +233,6 @@ namespace USStockDownloader.Utils
             }
             catch
             {
-                // キャッシュ保存に失敗した場合は無視
             }
         }
 
@@ -172,29 +240,52 @@ namespace USStockDownloader.Utils
         {
             try
             {
+                // 終了日を最新の取引日に自動調整
+                DateTime adjustedEndDate = AdjustToLatestTradingDay(endDate);
+                
                 var cache = LoadCache();
                 if (cache.TryGetValue(symbol, out var info))
                 {
-                    // 取引時間内は常に更新
-                    if (IsMarketHours())
+                    bool isMarketOpen = IsMarketHours();
+                    
+                    var lastTradingDay = GetLastTradingDay();
+                    
+                    if (isMarketOpen)
+                    {
+                        Console.WriteLine($"Symbol {symbol}: Market is open, update required");
                         return true;
+                    }
 
-                    // 取引時間外は1時間以上経過してている場合のみ更新
                     var timeSinceLastUpdate = DateTime.Now - info.LastUpdate;
-                    if (timeSinceLastUpdate > TimeSpan.FromHours(1))
+                    if (timeSinceLastUpdate > maxAge)
+                    {
+                        Console.WriteLine($"Symbol {symbol}: Cache is older than {maxAge.TotalHours} hours, update required");
                         return true;
-
-                    // 要求された期間がキャッシュの範囲外の場合は更新
-                    if (startDate < info.StartDate || endDate > info.EndDate)
+                    }
+                    
+                    if (info.LastTradingDate < lastTradingDay)
+                    {
+                        Console.WriteLine($"Symbol {symbol}: Cache doesn't have latest trading day data, update required");
                         return true;
+                    }
+                    
+                    if (startDate < info.StartDate || adjustedEndDate > info.EndDate)
+                    {
+                        Console.WriteLine($"Symbol {symbol}: Requested date range is outside cache range, update required");
+                        return true;
+                    }
 
+                    Console.WriteLine($"Symbol {symbol}: Using cache, no update required");
                     return false;
                 }
-                return true; // キャッシュにない場合は更新が必要
+                
+                Console.WriteLine($"Symbol {symbol}: Not in cache, update required");
+                return true; 
             }
-            catch
+            catch (Exception ex)
             {
-                return true; // エラーの場合は安全のため更新
+                Console.WriteLine($"Symbol {symbol}: Error checking cache: {ex.Message}, update required");
+                return true; 
             }
         }
 
@@ -208,13 +299,13 @@ namespace USStockDownloader.Utils
                     Symbol = symbol,
                     LastUpdate = DateTime.Now,
                     StartDate = startDate,
-                    EndDate = endDate
+                    EndDate = endDate,
+                    LastTradingDate = GetLastTradingDay() 
                 };
                 SaveCache(cache);
             }
             catch
             {
-                // キャッシュ更新に失敗した場合は無視
             }
         }
     }

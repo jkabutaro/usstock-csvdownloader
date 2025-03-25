@@ -32,8 +32,8 @@ namespace USStockDownloader
                     }
                     if (!cache.DotNetRuntimeValid)
                     {
-                        Console.WriteLine("必要な .NET Runtime がインストールされていません。");
-                        Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0");
+                        Console.WriteLine("必要な .NET Runtime がインストールされていません。 (Required .NET Runtime is not installed.)");
+                        Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0 (Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0)");
                         Environment.ExitCode = 1;
                         return;
                     }
@@ -53,20 +53,20 @@ namespace USStockDownloader
                     var dotNetRuntimeValid = DotNetRuntimeChecker.IsRequiredRuntimeInstalled();
                     if (!dotNetRuntimeValid)
                     {
-                        Console.WriteLine("必要な .NET Runtime がインストールされていません。");
-                        Console.WriteLine("Required .NET Runtime is not installed.");
+                        Console.WriteLine("必要な .NET Runtime がインストールされていません。 (Required .NET Runtime is not installed.)");
+                        Console.WriteLine("必要な .NET Runtime がインストールされていません。 (Required .NET Runtime is not installed.)");
 
                         if (await DotNetRuntimeChecker.InstallRuntimeAsync())
                         {
-                            Console.WriteLine("アプリケーションを再起動します...");
+                            Console.WriteLine("アプリケーションを再起動します... (Restarting application...)");
                             Console.WriteLine("Restarting application...");
                             DotNetRuntimeChecker.RestartApplication(args);
                             return;
                         }
                         else
                         {
-                            Console.WriteLine("必要な .NET Runtime のインストールに失敗しました。");
-                            Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0");
+                            Console.WriteLine("必要な .NET Runtime のインストールに失敗しました。 (Failed to install required .NET Runtime.)");
+                            Console.WriteLine("手動でインストールしてください: https://dotnet.microsoft.com/download/dotnet/9.0 (Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0)");
                             Console.WriteLine("Failed to install required .NET Runtime.");
                             Console.WriteLine("Please install manually: https://dotnet.microsoft.com/download/dotnet/9.0");
                             Environment.ExitCode = 1;
@@ -107,66 +107,66 @@ namespace USStockDownloader
                             // NYダウ構成銘柄リストをCSVに出力
                             if (logger != null)
                             {
-                                logger.LogInformation("NYダウ構成銘柄リストをCSVファイルに出力します...");
+                                logger.LogInformation("NYダウ構成銘柄リストをCSVファイルに出力します... (Exporting NY Dow symbol list to CSV...)");
                                 var outputPath = options.ExportListCsv;
                                 await symbolListExportService.ExportNYDListToCsvAsync(outputPath, options.ForceNYDUpdate);
-                                logger.LogInformation("NYダウ構成銘柄リストをCSVファイルに出力しました: {Path}", outputPath);
+                                logger.LogInformation("NYダウ構成銘柄リストをCSVファイルに出力しました: {Path} (Exported NY Dow symbol list to CSV)", outputPath);
                             }
                             else
                             {
-                                Console.WriteLine("NYダウ構成銘柄リストをCSVファイルに出力します...");
+                                Console.WriteLine("NYダウ構成銘柄リストをCSVファイルに出力します... (Exporting NY Dow symbol list to CSV...)");
                                 var outputPath = options.ExportListCsv;
                                 await symbolListExportService.ExportNYDListToCsvAsync(outputPath, options.ForceNYDUpdate);
-                                Console.WriteLine($"NYダウ構成銘柄リストをCSVファイルに出力しました: {outputPath}");
+                                Console.WriteLine($"NYダウ構成銘柄リストをCSVファイルに出力しました: {outputPath} (Exported NY Dow symbol list to CSV)");
                             }
                             return;
                         }
                         else if (options.UseSP500)
                         {
                             // S&P 500銘柄リストをCSVに出力
-                            Console.WriteLine("Exporting S&P 500 symbol list to CSV...");
+                            Console.WriteLine("S&P 500銘柄リストをCSVファイルに出力しています... (Exporting S&P 500 symbol list to CSV...)");
                             if (options.ForceSP500Update)
                             {
-                                Console.WriteLine("Forcing update of S&P 500 symbols...");
+                                Console.WriteLine("S&P 500銘柄リストを強制更新しています... (Forcing update of S&P 500 symbols...)");
                                 await serviceProvider.GetRequiredService<SP500CacheService>().ForceUpdateAsync();
                             }
                             await symbolListExportService.ExportSymbolListToCsv(options.ExportListCsv);
-                            Console.WriteLine($"Exported S&P 500 symbol list to {options.ExportListCsv}");
+                            Console.WriteLine($"S&P 500銘柄リストをCSVファイルに出力しました: {options.ExportListCsv} (Exported S&P 500 symbol list)");
                             return;
                         }
                         else if (options.UseBuffett)
                         {
                             // バフェットポートフォリオ銘柄リストをCSVに出力
-                            Console.WriteLine("Exporting Buffett portfolio symbol list to CSV...");
+                            Console.WriteLine("バフェットポートフォリオ銘柄リストをCSVファイルに出力しています... (Exporting Buffett portfolio symbol list to CSV...)");
                             await symbolListExportService.ExportBuffettListToCsvAsync(options.ExportListCsv, options.ForceBuffettUpdate);
-                            Console.WriteLine($"Exported Buffett portfolio symbol list to {options.ExportListCsv}");
+                            Console.WriteLine($"バフェットポートフォリオ銘柄リストをCSVファイルに出力しました: {options.ExportListCsv} (Exported Buffett portfolio symbol list)");
                             return;
                         }
                         else if (options.UseIndex)
                         {
                             // 主要指数リストをCSVに出力
-                            Console.WriteLine("Exporting major indices list to CSV...");
+                            Console.WriteLine("主要指数リストをCSVファイルに出力しています... (Exporting major indices list to CSV...)");
                             await symbolListExportService.ExportIndexListToCsvAsync(options.ExportListCsv, options.ForceIndexUpdate);
-                            Console.WriteLine($"Exported major indices list to {options.ExportListCsv}");
+                            Console.WriteLine($"主要指数リストをCSVファイルに出力しました: {options.ExportListCsv} (Exported major indices list)");
                             return;
                         }
                         else if (options.UseSBI)
                         {
                             // SBI証券取扱いの銘柄リストをCSVに出力
-                            Console.WriteLine("Exporting SBI Securities US stock list to CSV...");
+                            Console.WriteLine("SBI証券から米国株銘柄リストをCSVファイルに出力しています... (Exporting SBI Securities US stock list to CSV...)");
                             await symbolListExportService.ExportSBIListToCsvAsync(options.ExportListCsv);
-                            Console.WriteLine($"Exported SBI Securities US stock list to {options.ExportListCsv}");
+                            Console.WriteLine($"SBI証券から米国株銘柄リストをCSVファイルに出力しました: {options.ExportListCsv} (Exported SBI Securities US stock list)");
                             return;
                         }
                         else
                         {
                             if (logger != null)
                             {
-                                logger.LogError("CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi)");
+                                logger.LogError("CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi) (CSV list export requires symbol source specification)");
                             }
                             else
                             {
-                                Console.WriteLine("CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi)");
+                                Console.WriteLine("CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi) (CSV list export requires symbol source specification)");
                             }
                             return;
                         }
@@ -175,39 +175,39 @@ namespace USStockDownloader
                     // 銘柄リストを取得
                     if (options.UseSP500)
                     {
-                        Console.WriteLine("Fetching S&P 500 symbols...");
+                        Console.WriteLine("S&P 500銘柄リストを取得しています... (Fetching S&P 500 symbols...)");
                         if (options.ForceSP500Update)
                         {
-                            Console.WriteLine("Forcing update of S&P 500 symbols...");
+                            Console.WriteLine("S&P 500銘柄リストを強制更新しています... (Forcing update of S&P 500 symbols...)");
                             await serviceProvider.GetRequiredService<SP500CacheService>().ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(true, false, false, null);
                     }
                     else if (options.UseNYD)
                     {
-                        Console.WriteLine("Fetching NY Dow symbols...");
+                        Console.WriteLine("NYダウ銘柄リストを取得しています... (Fetching NY Dow symbols...)");
                         var nydService = serviceProvider.GetRequiredService<NYDCacheService>();
                         if (options.ForceNYDUpdate)
                         {
-                            Console.WriteLine("Forcing update of NY Dow symbols...");
+                            Console.WriteLine("NYダウ銘柄リストを強制更新しています... (Forcing update of NY Dow symbols...)");
                             await nydService.ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(false, true, false, null);
                     }
                     else if (options.UseBuffett)
                     {
-                        Console.WriteLine("Fetching Buffett portfolio symbols...");
+                        Console.WriteLine("バフェットポートフォリオ銘柄リストを取得しています... (Fetching Buffett portfolio symbols...)");
                         var buffettService = serviceProvider.GetRequiredService<BuffettCacheService>();
                         if (options.ForceBuffettUpdate)
                         {
-                            Console.WriteLine("Forcing update of Buffett portfolio symbols...");
+                            Console.WriteLine("バフェットポートフォリオ銘柄リストを強制更新しています... (Forcing update of Buffett portfolio symbols...)");
                             await buffettService.ForceUpdateAsync();
                         }
                         symbols = await symbolProvider.GetSymbolsAsync(false, false, true, null);
                     }
                     else if (options.UseIndex)
                     {
-                        Console.WriteLine("Using major indices...");
+                        Console.WriteLine("主要指数リストを使用しています... (Using major indices...)");
                         
                         // 指数シンボルを動的に取得
                         var indexService = serviceProvider.GetRequiredService<IndexListService>();
@@ -216,18 +216,18 @@ namespace USStockDownloader
                             : await indexService.GetMajorIndicesAsync();
                         
                         symbols = indexSymbols.Select(i => i.Symbol).ToList();
-                        Console.WriteLine($"Retrieved {symbols.Count} index symbols.");
+                        Console.WriteLine($"主要指数シンボルを{symbols.Count}件取得しました。 (Retrieved {symbols.Count} index symbols.)");
                     }
                     else if (options.UseSBI)
                     {
-                        Console.WriteLine("Fetching stock symbols from SBI Securities...");
+                        Console.WriteLine("SBI証券から米国株銘柄リストを取得しています... (Fetching stock symbols from SBI Securities...)");
                         
                         // SBI証券から銘柄リストを取得
                         var sbiStockFetcher = serviceProvider.GetRequiredService<SBIStockFetcher>();
                         
                         if (options.ForceSBIUpdate)
                         {
-                            Console.WriteLine("Forcing update of SBI Securities stock symbols...");
+                            Console.WriteLine("SBI証券の米国株銘柄リストを強制更新しています... (Forcing update of SBI Securities stock symbols...)");
                             var sbiSymbols = await sbiStockFetcher.ForceUpdateAsync();
                             symbols = sbiSymbols.Select(s => s.Symbol).ToList();
                         }
@@ -237,38 +237,43 @@ namespace USStockDownloader
                             symbols = sbiSymbols.Select(s => s.Symbol).ToList();
                         }
 
-                        Console.WriteLine($"Retrieved {symbols.Count} symbols from SBI Securities.");
+                        Console.WriteLine($"SBI証券から{symbols.Count}件の銘柄シンボルを取得しました。 (Retrieved {symbols.Count} symbols from SBI Securities.)");
                     }
                     else if (!string.IsNullOrEmpty(options.SymbolFile))
                     {
-                        Console.WriteLine($"Symbol file: {options.SymbolFile}");
+                        Console.WriteLine($"銘柄ファイルを使用: {options.SymbolFile} (Symbol file)");
                         symbols = await symbolProvider.GetSymbolsAsync(false, false, false, options.SymbolFile);
                     }
                     else if (!string.IsNullOrEmpty(options.Symbols))
                     {
-                        Console.WriteLine($"Using provided symbols: {options.Symbols}");
+                        Console.WriteLine($"指定された銘柄シンボルを使用: {options.Symbols} (Using provided symbols)");
                         symbols = options.Symbols.Split(',').Select(s => s.Trim()).ToList();
                     }
                     else
                     {
-                        Console.WriteLine("No symbols specified. Use --sp500, --nyd, --buffett, --index, --file, or --symbols.");
+                        Console.WriteLine("銘柄が指定されていません。--sp500, --nyd, --buffett, --index, --file, または --symbolsオプションを使用してください。 (No symbols specified.)");
                         return;
                     }
 
-                    Console.WriteLine($"Found {symbols.Count} symbols.");
-                    Console.WriteLine("Starting download process...");
+                    Console.WriteLine($"{symbols.Count}件の銘柄シンボルが見つかりました。 (Found {symbols.Count} symbols.)");
+                    Console.WriteLine("ダウンロードプロセスを開始しています... (Starting download process...)");
+
+                    // 日付範囲の設定
+                    DateTime startDate = options.StartDate ?? DateTime.Now.AddYears(-1);
+                    DateTime endDate = options.EndDate ?? DateTime.Now;
 
                     await downloadManager.DownloadStockDataAsync(
                         symbols, 
                         options.OutputDirectory, 
-                        options.StartDate, 
-                        options.EndDate);
+                        startDate, 
+                        endDate,
+                        options.QuickMode);
 
-                    Console.WriteLine("Download process completed.");
+                    Console.WriteLine("ダウンロードプロセスが完了しました。 (Download process completed.)");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error: {ex.Message}");
+                    Console.WriteLine($"エラー: {ex.Message} (Error)");
                     Environment.ExitCode = 1;
                 }
             }
@@ -280,16 +285,16 @@ namespace USStockDownloader
                     .WriteTo.File("error.log", rollingInterval: RollingInterval.Day)
                     .CreateLogger();
                 
-                logger.Error(ex, "An unhandled exception occurred");
-                Console.WriteLine($"An error occurred: {ex.Message}");
-                Console.WriteLine("詳細はerror.logを確認してください。");
+                logger.Error(ex, "処理されていない例外が発生しました (An unhandled exception occurred)");
+                Console.WriteLine($"エラーが発生しました: {ex.Message} (An error occurred)");
+                Console.WriteLine("詳細はerror.logを確認してください。 (See error.log for details.)");
                 Environment.ExitCode = 1;
             }
         }
 
         private static IServiceProvider ConfigureServices()
         {
-            Console.WriteLine("HTTP client configured.");
+            Console.WriteLine("HTTPクライアントを設定しました。 (HTTP client configured.)");
             
             // サービスコレクションを作成
             var services = new ServiceCollection();
@@ -320,11 +325,11 @@ namespace USStockDownloader
             services.AddSingleton<SymbolListExportService>();
             services.AddSingleton<SBIStockFetcher>();
             
-            Console.WriteLine("Services registered.");
+            Console.WriteLine("サービスを登録しました。 (Services registered.)");
             
             // サービスプロバイダーを構築
             var serviceProvider = services.BuildServiceProvider();
-            Console.WriteLine("Service provider built.");
+            Console.WriteLine("サービスプロバイダーを構築しました。 (Service provider built.)");
             
             return serviceProvider;
         }
