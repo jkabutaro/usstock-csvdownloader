@@ -72,6 +72,66 @@ cd usstock-csvdownloader
 dotnet build
 ```
 
+## ビルドと配布 (Build and Distribution)
+
+### 開発環境 (Development Environment)
+- Visual Studio 2022以上 (Visual Studio 2022 or higher)
+- .NET 9.0 SDK
+- C# 12.0
+
+### ビルド方法 (Build Method)
+
+#### 通常ビルド (Normal Build)
+```bash
+dotnet build USStockDownloader -c Release
+```
+
+#### 配布用ビルド（シングルファイル形式） (Distribution Build (Single-file Format))
+配布用には、依存ファイル（DLL）を含めた単一の実行ファイルを生成するシングルファイル形式でのビルドを推奨します。
+(For distribution, it is recommended to build in single-file format, which generates a single executable file that includes all dependencies (DLLs).)
+
+```bash
+dotnet publish USStockDownloader -c Release -o ./publish/v{バージョン}_single -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:PublishTrimmed=true
+```
+
+このコマンドにより、以下の特徴を持つ配布用ビルドが生成されます：
+(This command generates a distribution build with the following features:)
+
+- 単一の実行ファイル（USStockDownloader.exe）のみで動作 (Operates with only a single executable file (USStockDownloader.exe))
+- 依存DLLファイルが不要（すべて実行ファイルに含まれる） (No dependent DLL files required (all included in the executable file))
+- .NET Runtimeのインストールが不要（セルフコンテインド） (No need to install .NET Runtime (self-contained))
+
+#### 配布用ZIPパッケージの作成 (Creating a Distribution ZIP Package)
+配布用ZIPパッケージには以下のファイルを含めてください：
+(Include the following files in the distribution ZIP package:)
+
+1. USStockDownloader.exe（シングルファイル形式でビルドされた実行ファイル） (Executable file built in single-file format)
+2. README.md（詳細な説明） (Detailed explanation)
+3. RELEASE_NOTES.md（更新内容） (Update contents)
+4. 使い方ガイド.md（基本的な使い方の説明） (Basic usage guide)
+5. output/（空のディレクトリ） (Empty directory)
+6. Cache/（空のディレクトリ） (Empty directory)
+
+PowerShellでのZIPパッケージ作成例：
+(Example of creating a ZIP package with PowerShell:)
+
+```powershell
+# 必要なディレクトリを作成 (Create necessary directories)
+mkdir -p publish/v{バージョン}_single/output
+mkdir -p publish/v{バージョン}_single/Cache
+
+# ドキュメントをコピー (Copy documents)
+Copy-Item README.md -Destination publish/v{バージョン}_single/
+
+# ZIPアーカイブを作成 (Create ZIP archive)
+Compress-Archive -Path publish/v{バージョン}_single/* -DestinationPath publish/USStockDownloader_v{バージョン}.zip -Force
+```
+
+### 配布時の注意点 (Distribution Notes)
+- シングルファイル形式でビルドした場合、実行ファイルのサイズは約20MB程度になります (When built in single-file format, the executable file size will be approximately 20MB)
+- トリミング（PublishTrimmed）を有効にすると警告が表示されますが、通常の使用には影響しません (Enabling trimming (PublishTrimmed) will display warnings, but it does not affect normal use)
+- 配布用パッケージには必ず空の`output`ディレクトリと`Cache`ディレクトリを含めてください (Always include empty `output` and `Cache` directories in the distribution package)
+
 ## 使用方法 (Usage)
 
 ### システム要件 (System Requirements)
@@ -258,7 +318,7 @@ AADI,Aadi Biosciences Inc アーディ バイオサイエンシズ,NASDAQ,stock
 | カラム | 説明 | 型 |
 |--------|------|-----|
 | code | ティッカーシンボル | 文字列 |
-| name | 銘柄名（日本語名付き） | 文字列 |
+| name | 銘柄名 | 文字列 |
 | market | 市場(NYSEやNASDAQ) | 文字列 |
 | type | 種類(stockやindexやetf) | 文字列 |
 
