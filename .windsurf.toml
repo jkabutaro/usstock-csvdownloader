@@ -1,0 +1,82 @@
+# USStockDownloader Project Configuration
+
+[project]
+name = "usstock-csvdownloader"
+description = "米国株価データを Yahoo Finance から取得し CSV 形式で保存するツール"
+version = "0.5.0"  # 2025-02-26 現在のバージョン
+
+[build]
+dotnet_version = "9.0"
+configuration = "Release"
+output_dir = "USStockDownloader/bin/Release/net9.0"
+
+[features]
+# 実装済みの機能
+sp500_symbols = true        # S&P 500銘柄の自動取得（Wikipediaから）
+parallel_download = true    # 並列ダウンロード
+market_hours_check = true   # 市場時間チェック（ダウンロードには影響しない）
+data_caching = true        # データキャッシュ機能
+retry_mechanism = true      # Pollyによるリトライ機構
+csv_format = true          # 日付形式：yyyymmdd（整数値）
+
+[dependencies]
+# 主要な依存パッケージ
+CsvHelper = "*"            # CSV操作
+Polly = "*"               # リトライ処理
+HtmlAgilityPack = "*"     # HTML解析（Wikipedia用）
+Serilog = "*"             # ログ記録
+
+[paths]
+output = "${working_dir}/output"  # CSVファイルの出力先
+cache = "${working_dir}/cache"    # キャッシュデータの保存先
+
+[defaults]
+max_concurrent_downloads = 3      # デフォルトの並列ダウンロード数
+cache_expiry_hours = 1           # キャッシュの有効期限（時間）
+retry_attempts = 3               # リトライ回数
+retry_delay_seconds = 5          # リトライ間隔（秒）
+
+[development]
+# 開発とデバッグの方針
+debug_strategy = """
+問題修正時は以下の手順で対応する：
+1. 詳細なログ出力を追加し、ステップ・バイ・ステップで原因究明を行う
+2. 変数の状態や処理の流れを確認するためのログを適切に配置
+3. 問題の再現手順を明確にし、ログ出力で状況を確認
+4. 修正後も十分なログ出力を残し、動作確認を行う
+"""
+
+logging_rules = [
+    "重要な処理の開始・終了時にはログを出力",
+    "エラー発生時は詳細な情報（例外、パラメータ）を記録",
+    "デバッグ時は変数の状態変化を追跡できるようにする",
+    "市場時間やキャッシュの状態など、重要な判断ポイントの情報を記録"
+]
+
+[status]
+# 現在の実装状況（2025-02-26時点）
+sp500_success_rate = "99.4%"     # S&P 500銘柄のダウンロード成功率
+failed_symbols = ["ETR", "BRK.B", "BF.B"]  # 失敗した銘柄
+
+# 最近の修正（2025-02-26）
+recent_fixes = [
+    "市場時間外でもデータをダウンロードできるように修正",
+    "キャッシュ機能の改善（ファイル存在確認の追加）",
+    "バージョン管理の整理（v0.5.0としてタグ付け）"
+]
+
+[todo]
+# 改善が必要な項目
+improvements = [
+    "ピリオドを含むシンボル（BRK.B、BF.B）の処理方法の改善",
+    "ETRシンボルの検証と修正",
+    "失敗した銘柄の再試行メカニズムの実装"
+]
+
+# 追加機能の検討
+future_features = [
+    "失敗した銘柄のレポート機能の強化",
+    "並列ダウンロード数の動的調整",
+    "データ検証機能の拡充"
+]
+    

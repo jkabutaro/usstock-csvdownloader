@@ -14,13 +14,19 @@ public class SP500CacheService
     private readonly string _cacheFilePath;
     private List<StockSymbol>? _cachedSymbols;
     private const string SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies";
-    private static readonly TimeSpan CACHE_EXPIRY = TimeSpan.FromDays(1);
+    private readonly TimeSpan _cacheExpiry;
 
     public SP500CacheService(HttpClient httpClient, ILogger<SP500CacheService> logger)
+        : this(httpClient, logger, Path.Combine("Cache", "sp500_symbols.json"), TimeSpan.FromDays(1))
+    {
+    }
+
+    public SP500CacheService(HttpClient httpClient, ILogger<SP500CacheService> logger, string cacheFilePath, TimeSpan cacheExpiry)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _cacheFilePath = Path.Combine("Cache", "sp500_symbols.json");
+        _cacheFilePath = cacheFilePath;
+        _cacheExpiry = cacheExpiry;
     }
 
     public async Task<List<StockSymbol>> GetSP500Symbols()
@@ -33,7 +39,7 @@ public class SP500CacheService
         if (File.Exists(_cacheFilePath))
         {
             var fileInfo = new FileInfo(_cacheFilePath);
-            if (DateTime.Now - fileInfo.LastWriteTime < CACHE_EXPIRY)
+            if (DateTime.Now - fileInfo.LastWriteTime < _cacheExpiry)
             {
                 try
                 {
@@ -98,11 +104,23 @@ public class SP500CacheService
             foreach (var row in rows.Skip(1)) // Skip header row
             {
                 var cells = row.SelectNodes(".//td");
-                if (cells != null && cells.Count >= 2)
+                if (cells != null && cells.Count >= 3) // 少なくとも3列（シンボル、名前、セクター）が必要
                 {
                     var symbol = cells[0].InnerText.Trim();
                     var name = cells[1].InnerText.Trim();
-                    symbols.Add(new StockSymbol { Symbol = symbol, Name = name });
+                    
+                    // 市場情報の判定（S&P 500はほとんどがNYSEかNASDAQ）
+                    string market = DetermineMarket(symbol);
+                    
+                    // 種別の判定（ETFかどうか）
+                    string type = DetermineType(symbol, name);
+                    
+                    symbols.Add(new StockSymbol { 
+                        Symbol = symbol, 
+                        Name = name,
+                        Market = market,
+                        Type = type
+                    });
                 }
             }
 
@@ -114,6 +132,52 @@ public class SP500CacheService
             _logger.LogError(ex, "Failed to fetch S&P 500 symbols from Wikipedia");
             throw;
         }
+    }
+
+    // 銘柄の市場を判定するヘルパーメソッド
+    private string DetermineMarket(string symbol)
+    {
+        // 一般的なルールとして、ほとんどのS&P 500銘柄はNYSEかNASDAQに上場している
+        // 実際にはより複雑な判定が必要ですが、簡易的な実装として以下のルールを使用
+        
+        // 一部の有名なNASDAQ銘柄
+        string[] nasdaqSymbols = { "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "META", "TSLA", "NVDA", "ADBE", "NFLX", "PYPL", "INTC", "CSCO", "CMCSA", "PEP" };
+        
+        if (nasdaqSymbols.Contains(symbol))
+        {
+            return "NASDAQ";
+        }
+        
+        // 4文字以上の銘柄コードはNASDAQの可能性が高い
+        if (symbol.Length >= 4 && !symbol.Contains("."))
+        {
+            return "NASDAQ";
+        }
+        
+        // それ以外はNYSEと仮定
+        return "NYSE";
+    }
+
+    // 銘柄の種別（個別株/ETF）を判定するヘルパーメソッド
+    private string DetermineType(string symbol, string name)
+    {
+        // 名前にETFが含まれる場合はETF
+        if (name.Contains("ETF") || name.Contains("Fund") || name.Contains("Trust") || 
+            name.Contains("iShares") || name.Contains("SPDR") || name.Contains("Vanguard"))
+        {
+            return "etf";
+        }
+        
+        // 特定のETFシンボルのリスト
+        string[] etfSymbols = { "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV", "VTI", "VOO", "VEA", "VWO", "BND", "AGG", "LQD", "TLT", "SHY" };
+        
+        if (etfSymbols.Contains(symbol))
+        {
+            return "etf";
+        }
+        
+        // デフォルトは個別株
+        return "stock";
     }
 
     private async Task SaveSymbolsToCache(List<StockSymbol> symbols)

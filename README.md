@@ -102,6 +102,12 @@ USStockDownloader --sp500 --force -o ./data
 - S&P 500銘柄のデータを強制的に全て更新 (Force update all S&P 500 symbol data)
 - キャッシュの状態に関わらず全銘柄をダウンロードします (Download all symbols regardless of cache status)
 
+#### キャッシュクリアオプション (Cache Clear Option)
+```bash
+USStockDownloader --cacheclear --sp500 -o ./data
+```
+- キャッシュをクリアしてからS&P 500銘柄のデータをダウンロード (Clear cache before downloading S&P 500 symbol data)
+
 #### 利用可能なオプション (Available Options)
 | オプション | 説明 | デフォルト値 |
 |------------|------|--------------|
@@ -128,6 +134,92 @@ USStockDownloader --sp500 --force -o ./data
 | `--sbi` | SBI証券取扱いの米国株式データをダウンロード | - |
 | `--sbi-f` | SBI証券取扱いの銘柄リストを強制的に更新してダウンロード | - |
 | `--sbi --listcsv` | SBI証券取扱いの銘柄リストをCSVファイルに出力 | - |
+| `--cacheclear` | キャッシュをクリアしてから実行 | - |
+
+## キャッシュファイル (Cache Files)
+
+本ツールは、パフォーマンス向上のためにいくつかのデータをキャッシュファイルとして保存します。
+(This tool stores some data as cache files to improve performance.)
+
+### キャッシュファイルの場所 (Cache File Locations)
+
+キャッシュファイルは以下の場所に保存されます：
+(Cache files are stored in the following locations:)
+
+1. **S&P 500銘柄キャッシュ (S&P 500 Symbol Cache)**
+   - 場所: `Cache/sp500_symbols.json`
+   - 内容: S&P 500構成銘柄のリスト（シンボル、名前、市場、種別情報）
+   - 有効期限: 1日（デフォルト）
+
+2. **NYダウ銘柄キャッシュ (Dow Jones Symbol Cache)**
+   - 場所: `Cache/nyd_symbols.json`
+   - 内容: NYダウ構成銘柄のリスト（シンボル、名前、市場、種別情報）
+   - 有効期限: 1日（デフォルト）
+
+3. **バフェットポートフォリオ銘柄キャッシュ (Buffett Portfolio Symbol Cache)**
+   - 場所: `Cache/buffett_symbols.json`
+   - 内容: バフェットポートフォリオ銘柄のリスト（シンボル、名前、市場、種別情報）
+   - 有効期限: 1日（デフォルト）
+
+4. **インデックスキャッシュ (Index Cache)**
+   - 場所: `index_symbols.json`（ルートディレクトリ）
+   - 内容: 主要インデックスのリスト
+   - 有効期限: 24時間（デフォルト）
+
+5. **株価データキャッシュ (Stock Price Data Cache)**
+   - 場所: `%LocalAppData%\USStockDownloader\stock_data_cache.json`
+   - 内容: すべての銘柄（`--sp500`、`--nyd`、`--buffett`、`--symbols`、`--file`など、すべてのオプションで指定した銘柄）の株価データキャッシュ情報
+   - 有効期限: 4時間（デフォルト）
+
+### キャッシュの更新 (Cache Update)
+
+キャッシュは以下の条件で更新されます：
+(Cache is updated under the following conditions:)
+
+1. キャッシュファイルが存在しない場合
+   (When the cache file does not exist)
+
+2. キャッシュの有効期限が切れた場合
+   (When the cache has expired)
+
+3. 強制更新オプションを使用した場合
+   (When using force update options)
+   - S&P 500: `--sp500-f`
+   - NYダウ: `--nyd-f`
+   - バフェットポートフォリオ: `--buffett-f`
+
+4. キャッシュクリアオプションを使用した場合
+   (When using cache clear option)
+   - `--cacheclear`
+
+### 株価データのキャッシュ (Stock Price Data Cache)
+
+株価データは、取得元（`--sp500`、`--nyd`、`--buffett`、`--symbols`、`--file`など）に関係なく、すべての銘柄がキャッシュされます。
+(Stock price data is cached for all symbols regardless of the source (--sp500, --nyd, --buffett, --symbols, --file, etc.).)
+
+株価データのキャッシュは以下の条件で更新されます：
+(Stock price data cache is updated under the following conditions:)
+
+1. 市場が開いている場合
+   (When the market is open)
+
+2. キャッシュが4時間より古い場合
+   (When the cache is older than 4 hours)
+
+3. キャッシュに最新の取引日データがない場合
+   (When the cache does not have the latest trading day data)
+
+4. リクエストされた日付範囲がキャッシュの範囲外の場合
+   (When the requested date range is outside the cache range)
+
+キャッシュファイルは自動的に管理されるため、通常はユーザーが直接操作する必要はありません。
+(Cache files are automatically managed, so users usually do not need to manipulate them directly.)
+
+すべてのキャッシュファイルは、アプリケーションのインストールディレクトリ内の `Cache` フォルダに保存されます。
+(All cache files are stored in the `Cache` folder within the application's installation directory.)
+
+なんらかの問題が発生した場合、`Cache`フォルダ内のファイルを削除することでキャッシュが消去されます。また、`--cacheclear`オプションを使用すると、アプリケーション実行時に自動的にすべてのキャッシュを削除することができます。
+(If any issues occur, you can delete the files in the `Cache` folder to clear the cache. You can also use the `--cacheclear` option to automatically delete all cache files when running the application.)
 
 ## データ形式 (Data Format)
 
@@ -210,10 +302,17 @@ USStockDownloader --sbi --listcsv output/sbi_list.csv
    - フォールバック: スクレイピングに失敗した場合は内部定義のデフォルトリストを使用
    - 更新頻度: 24時間キャッシュ（`--index-f`オプションで強制更新可能）
 
-5. **全銘柄リスト**
-   - 取得元: Yahoo Finance API
-   - 取得方法: APIリクエスト
-   - 更新頻度: リクエストごとに最新情報を取得
+5. **SBI証券銘柄リスト（全銘柄リスト）**
+   - 取得元: SBI証券の米国株式一覧ページ（https://search.sbisec.co.jp/v2/popwin/info/stock/pop6040_usequity_list.html）
+   - 取得方法: PuppeteerSharpを使用したブラウザ自動操作によるスクレイピング
+   - 処理内容:
+     - ヘッドレスブラウザでページにアクセス
+     - 「全件」表示オプションを選択してすべての銘柄を表示
+     - テーブルからティッカーシンボル、銘柄名、マーケット情報を抽出
+   - 出力形式: ティッカーシンボル、銘柄名（日本語表記含む）、マーケット（NASDAQ/NYSE）、タイプ（stock）
+   - 更新頻度: 7日間キャッシュ（`--sbi-f`オプションで強制更新可能）
+   - キャッシュ場所: `%APPDATA%\USStockDownloader\sbi_symbols_cache.json`
+   - 使用方法: `--sbi` オプションを指定して実行
 
 これらの情報は以下の点に注意してください：
 - Wikipediaの記事内容はいつでも変更される可能性があり、その結果として正確な情報が取得できない場合があります
@@ -549,18 +648,21 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 ## 更新履歴 (Update History)
 
-### 2025-03-25 キャッシュ機能の改善 (Cache Function Improvement)
+### 2025-03-25 営業日チェック機能の改善 (Trading Day Check Function Improvement)
 
-- **キャッシュ有効性判定の最適化** (Optimization of cache validity determination)
-  - リクエスト終了日が現在日付で、キャッシュの終了日が最新取引日の場合、キャッシュを有効と判断 (When the request end date is the current date and the cache end date is the latest trading day, the cache is considered valid)
-  - 不要なデータダウンロードを回避し、処理時間を短縮 (Avoids unnecessary data downloads and reduces processing time)
-  - API呼び出し回数の削減によるリソース節約 (Resource saving by reducing the number of API calls)
+- **営業日チェック機能の効率化** (Optimization of trading day check function)
+  - 営業日チェックメソッド（`CheckTradingDayRangeAsync`）を公開メソッドとして実装 (Implemented trading day check method (`CheckTradingDayRangeAsync`) as a public method)
+  - NYダウ（`^DJI`）のデータを使用して営業日かどうかを効率的に判断 (Efficiently determines whether a day is a trading day using Dow Jones (`^DJI`) data)
+  - リトライなしでの株価データ取得により、非営業日の判定を高速化 (Accelerates non-trading day determination by fetching stock data without retries)
+  - 休日や週末の日付範囲に対する不要なリトライを回避 (Avoids unnecessary retries for date ranges on holidays and weekends)
 
-- **詳細なログメッセージの追加** (Addition of detailed log messages)
-  - キャッシュ使用状況を日本語と英語の両方で明確に表示 (Clearly displays cache usage status in both Japanese and English)
-  - 「リクエスト終了日が現在日付で、キャッシュの終了日が最新取引日のため、キャッシュを使用します」などの詳細メッセージ (Detailed messages such as "Request end date is today, cache end date is the latest trading day, using cache")
+- **株価データ取得処理の最適化** (Optimization of stock data retrieval process)
+  - 営業日チェック機能を使用して、非営業日の場合はデータ取得をスキップ (Skips data retrieval when not a trading day, using the trading day check function)
+  - キャッシュとの連携強化により、既存データの有効活用を促進 (Promotes effective use of existing data through enhanced integration with cache)
+  - エラーログの詳細化による問題診断の容易化 (Facilitates problem diagnosis through more detailed error logs)
 
 - **テスト結果** (Test Results)
-  - S&P 500およびNYダウの全銘柄で正常にキャッシュが機能 (Cache functions normally for all S&P 500 and NY Dow symbols)
-  - 2回目以降の実行では、最新データがすでにキャッシュされている場合、Yahoo Financeへのリクエストが発生せず処理が高速化 (From the second execution onwards, if the latest data is already cached, processing is accelerated without requests to Yahoo Finance)
-  - 並列処理数5での全銘柄ダウンロード時間：約2分（初回）、数秒（2回目以降、キャッシュ使用時） (Download time for all symbols with 5 parallel processes: about 2 minutes (first time), a few seconds (from the second time onwards, when using cache))
+  - 単一銘柄（AAPL）での営業日チェック機能のテストに成功 (Successfully tested trading day check function with a single symbol (AAPL))
+  - 休日や週末の日付範囲に対して「営業日なし」と正しく判断 (Correctly determined "No trading days" for date ranges on holidays and weekends)
+  - 営業日チェック機能により、API呼び出し回数の削減と処理時間の短縮を実現 (Achieved reduction in API calls and processing time through the trading day check function)
+  - 実際の使用シナリオでの動作確認により、機能の信頼性を検証 (Verified function reliability through operation confirmation in actual usage scenarios)

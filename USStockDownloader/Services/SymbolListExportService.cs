@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,9 @@ public class SymbolListExportService
     private readonly NYDCacheService _nydCacheService;
     private readonly IndexListService _indexListService;
     private readonly BuffettCacheService _buffettCacheService;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly SBIStockFetcher _sbiStockFetcher;
 
     static SymbolListExportService()
     {
@@ -26,13 +30,19 @@ public class SymbolListExportService
         SP500CacheService sp500CacheService,
         NYDCacheService nydCacheService,
         IndexListService indexListService,
-        BuffettCacheService buffettCacheService)
+        BuffettCacheService buffettCacheService,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
+        SBIStockFetcher sbiStockFetcher)
     {
         _logger = logger;
         _sp500CacheService = sp500CacheService;
         _nydCacheService = nydCacheService;
         _indexListService = indexListService;
         _buffettCacheService = buffettCacheService;
+        _httpClientFactory = httpClientFactory;
+        _loggerFactory = loggerFactory;
+        _sbiStockFetcher = sbiStockFetcher;
     }
 
     public async Task ExportSymbolListToCsv(string csvPath)
@@ -553,5 +563,174 @@ public class SymbolListExportService
             _logger.LogError(ex, "Failed to export Buffett portfolio list to CSV");
             throw;
         }
+    }
+    
+    /// <summary>
+    /// 主要銘柄の日本語名マッピングを取得します
+    /// </summary>
+    /// <returns>銘柄コードと日本語名のマッピング</returns>
+    private Dictionary<string, string> GetJapaneseNameMap()
+    {
+        // 主要銘柄の日本語名マッピング
+        return new Dictionary<string, string>
+        {
+            // NYダウ構成銘柄
+            { "AAPL", "アップル" },
+            { "AMGN", "アムジェン" },
+            { "AXP", "アメリカン・エキスプレス" },
+            { "BA", "ボーイング" },
+            { "CAT", "キャタピラー" },
+            { "CRM", "セールスフォース" },
+            { "CSCO", "シスコシステムズ" },
+            { "CVX", "シェブロン" },
+            { "DIS", "ウォルト・ディズニー" },
+            { "DOW", "ダウ" },
+            { "GS", "ゴールドマン・サックス" },
+            { "HD", "ホーム・デポ" },
+            { "HON", "ハネウェル" },
+            { "IBM", "アイビーエム" },
+            { "INTC", "インテル" },
+            { "JNJ", "ジョンソン・エンド・ジョンソン" },
+            { "JPM", "JPモルガン・チェース" },
+            { "KO", "コカ・コーラ" },
+            { "MCD", "マクドナルド" },
+            { "MMM", "スリーエム" },
+            { "MRK", "メルク" },
+            { "MSFT", "マイクロソフト" },
+            { "NKE", "ナイキ" },
+            { "PG", "プロクター・アンド・ギャンブル" },
+            { "TRV", "トラベラーズ" },
+            { "UNH", "ユナイテッドヘルス" },
+            { "V", "ビザ" },
+            { "VZ", "ベライゾン" },
+            { "WBA", "ウォルグリーン" },
+            { "WMT", "ウォルマート" },
+            
+            // 人気テック銘柄
+            { "GOOG", "グーグル" },
+            { "GOOGL", "グーグル" },
+            { "META", "メタ・プラットフォームズ" },
+            { "NFLX", "ネットフリックス" },
+            { "NVDA", "エヌビディア" },
+            { "TSLA", "テスラ" },
+            { "AMZN", "アマゾン" },
+            
+            // その他人気銘柄
+            { "BABA", "アリババ" },
+            { "BRK-A", "バークシャー・ハサウェイ" },
+            { "BRK-B", "バークシャー・ハサウェイ" },
+            { "PFE", "ファイザー" },
+            { "T", "AT&T" },
+            { "F", "フォード" },
+            { "GM", "ゼネラルモーターズ" }
+        };
+    }
+
+    /// <summary>
+    /// 主要銘柄のマーケット情報を取得します
+    /// </summary>
+    /// <returns>銘柄コードとマーケット情報のマッピング</returns>
+    private Dictionary<string, string> GetMarketMap()
+    {
+        // 主要銘柄のマーケット情報マッピング
+        return new Dictionary<string, string>
+        {
+            // NYダウ構成銘柄
+            { "AAPL", "NASDAQ" },
+            { "AMGN", "NASDAQ" },
+            { "AXP", "NYSE" },
+            { "BA", "NYSE" },
+            { "CAT", "NYSE" },
+            { "CRM", "NYSE" },
+            { "CSCO", "NASDAQ" },
+            { "CVX", "NYSE" },
+            { "DIS", "NYSE" },
+            { "DOW", "NYSE" },
+            { "GS", "NYSE" },
+            { "HD", "NYSE" },
+            { "HON", "NASDAQ" },
+            { "IBM", "NYSE" },
+            { "INTC", "NASDAQ" },
+            { "JNJ", "NYSE" },
+            { "JPM", "NYSE" },
+            { "KO", "NYSE" },
+            { "MCD", "NYSE" },
+            { "MMM", "NYSE" },
+            { "MRK", "NYSE" },
+            { "MSFT", "NASDAQ" },
+            { "NKE", "NYSE" },
+            { "PG", "NYSE" },
+            { "TRV", "NYSE" },
+            { "UNH", "NYSE" },
+            { "V", "NYSE" },
+            { "VZ", "NYSE" },
+            { "WBA", "NASDAQ" },
+            { "WMT", "NYSE" },
+            
+            // 人気テック銘柄
+            { "GOOG", "NASDAQ" },
+            { "GOOGL", "NASDAQ" },
+            { "META", "NASDAQ" },
+            { "NFLX", "NASDAQ" },
+            { "NVDA", "NASDAQ" },
+            { "TSLA", "NASDAQ" },
+            { "AMZN", "NASDAQ" },
+            
+            // その他人気銘柄
+            { "BABA", "NYSE" },
+            { "BRK-A", "NYSE" },
+            { "BRK-B", "NYSE" },
+            { "PFE", "NYSE" },
+            { "T", "NYSE" },
+            { "F", "NYSE" },
+            { "GM", "NYSE" }
+        };
+    }
+
+    // 同期版メソッド（互換性のため残す）
+    public void ExportBuffettListToCsv(string csvPath)
+    {
+        ExportBuffettListToCsvAsync(csvPath).GetAwaiter().GetResult();
+    }
+
+    // SBI証券取扱いの米国株式リストをCSVファイルに出力
+    public async Task ExportSBIListToCsvAsync(string csvPath)
+    {
+        try
+        {
+            _logger.LogInformation("Exporting SBI Securities US stock list to CSV...");
+            
+            // SBI証券から銘柄リストを取得
+            var sbiSymbols = await _sbiStockFetcher.FetchStockSymbolsAsync();
+            
+            // 出力ディレクトリが存在しない場合は作成
+            var outputDirectory = Path.GetDirectoryName(csvPath);
+            if (!string.IsNullOrEmpty(outputDirectory) && !Directory.Exists(outputDirectory))
+            {
+                Directory.CreateDirectory(outputDirectory);
+            }
+            
+            _logger.LogInformation("Writing {Count} SBI Securities US stock symbols to {FilePath}", sbiSymbols.Count, csvPath);
+            
+            // CSVファイルに出力
+            using (var writer = new StreamWriter(csvPath, false, System.Text.Encoding.UTF8))
+            using (var csv = new CsvHelper.CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
+            {
+                csv.WriteRecords(sbiSymbols);
+            }
+            
+            _logger.LogInformation("Successfully exported SBI Securities US stock list to CSV");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to export SBI Securities US stock list to CSV");
+            throw;
+        }
+    }
+    
+    // 同期版メソッド（互換性のため残す）
+    public void ExportSBIListToCsv(string csvPath)
+    {
+        ExportSBIListToCsvAsync(csvPath).GetAwaiter().GetResult();
     }
 }

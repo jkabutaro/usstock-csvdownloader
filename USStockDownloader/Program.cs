@@ -6,6 +6,7 @@ using System.CommandLine.Parsing;
 using System.Runtime.Versioning;
 using USStockDownloader.Options;
 using USStockDownloader.Services;
+using USStockDownloader.Services.YahooFinance;
 using USStockDownloader.Utils;
 using Serilog;
 using Serilog.Events;
@@ -20,6 +21,24 @@ namespace USStockDownloader
         {
             try
             {
+                // コマンドライン引数の解析
+                var options = DownloadOptions.Parse(args);
+                
+                // キャッシュクリアオプションが指定されている場合
+                if (options.CacheClear)
+                {
+                    // キャッシュディレクトリが存在することを確認
+                    CacheManager.EnsureCacheDirectoryExists();
+                    
+                    // すべてのキャッシュファイルを削除
+                    int deletedCount = CacheManager.ClearAllCaches();
+                    Console.WriteLine($"キャッシュをクリアしました: {deletedCount} ファイルを削除しました (Cache cleared: {deletedCount} files deleted)");
+                }
+                
+                // キャッシュディレクトリを初期化
+                // (Initialize cache directory)
+                CacheManager.EnsureCacheDirectoryExists();
+                
                 // キャッシュをチェック
                 var cache = RuntimeCheckCache.LoadCache();
                 if (cache != null)
@@ -89,7 +108,7 @@ namespace USStockDownloader
                 var downloadManager = serviceProvider.GetRequiredService<StockDownloadManager>();
 
                 // コマンドライン引数の解析
-                var options = DownloadOptions.Parse(args);
+                //var options = DownloadOptions.Parse(args);
 
                 List<string> symbols = new List<string>();
                 
@@ -258,9 +277,69 @@ namespace USStockDownloader
                     Console.WriteLine($"{symbols.Count}件の銘柄シンボルが見つかりました。 (Found {symbols.Count} symbols.)");
                     Console.WriteLine("ダウンロードプロセスを開始しています... (Starting download process...)");
 
-                    // 日付範囲の設定
-                    DateTime startDate = options.StartDate ?? DateTime.Now.AddYears(-1);
-                    DateTime endDate = options.EndDate ?? DateTime.Now;
+                    // 終了日の設定：オプションで指定されていない場合はYahoo Financeの最新取引日を使用
+                    DateTime endDate;
+                    if (options.EndDate.HasValue)
+                    {
+                        endDate = options.EndDate.Value;
+                        Console.WriteLine($"指定された終了日を使用します: {endDate:yyyy-MM-dd} (Using specified end date)");
+                    }
+                    else
+                    {
+                        // Yahoo Financeから最新取引日を取得
+                        var yahooFinanceLatestTradingDateService = serviceProvider.GetRequiredService<YahooFinanceLatestTradingDateService>();
+                        var latestTradingDate = await yahooFinanceLatestTradingDateService.GetLatestTradingDateAsync();
+                        
+                        if (latestTradingDate.HasValue)
+                        {
+                            endDate = latestTradingDate.Value.Date;
+                            Console.WriteLine($"Yahoo Financeから取得した最新取引日を使用します: {endDate:yyyy-MM-dd} (Using latest trading date from Yahoo Finance)");
+                        }
+                        else
+                        {
+                            // 取得に失敗した場合はシステム日付を使用（土日の場合は前営業日）
+                            endDate = DateTime.Now.Date;
+                            
+                            // 土日チェック
+                            if (endDate.DayOfWeek == DayOfWeek.Saturday)
+                            {
+                                // 土曜日の場合は金曜日を使用
+                                Console.WriteLine($"システム日付が土曜日です。前営業日を使用します: {endDate:yyyy-MM-dd} → {endDate.AddDays(-1):yyyy-MM-dd} (Using previous business day as system date is Saturday)");
+                                endDate = endDate.AddDays(-1);
+                            }
+                            else if (endDate.DayOfWeek == DayOfWeek.Sunday)
+                            {
+                                // 日曜日の場合は金曜日を使用
+                                Console.WriteLine($"システム日付が日曜日です。前営業日を使用します: {endDate:yyyy-MM-dd} → {endDate.AddDays(-2):yyyy-MM-dd} (Using previous business day as system date is Sunday)");
+                                endDate = endDate.AddDays(-2);
+                            }
+                            
+                            Console.WriteLine($"Yahoo Financeから最新取引日を取得できなかったため、システム日付を使用します: {endDate:yyyy-MM-dd} (Using system date as latest trading date failed to retrieve from Yahoo Finance)");
+                        }
+                    }
+
+                    // 日付範囲の設定：開始日が指定されていない場合は終了日の1年前を使用
+                    DateTime startDate;
+                    if (options.StartDate.HasValue)
+                    {
+                        startDate = options.StartDate.Value;
+                        Console.WriteLine($"指定された開始日を使用します: {startDate:yyyy-MM-dd} (Using specified start date)");
+                    }
+                    else
+                    {
+                        startDate = endDate.AddYears(-1);
+                        Console.WriteLine($"開始日が指定されていないため、終了日の1年前を使用します: {startDate:yyyy-MM-dd} (Using one year before end date as start date)");
+                    }
+                    
+                    Console.WriteLine($"日付範囲: {startDate:yyyy-MM-dd}から{endDate:yyyy-MM-dd}まで (Date range)");
+                    Console.WriteLine($"【日付追跡】Program.cs - ダウンロード前 - endDate: {endDate:yyyy-MM-dd HH:mm:ss}, Year: {endDate.Year} (Date tracking)");
+
+                    // 日付情報のダンプ
+                    Console.WriteLine("====== 日付情報のダンプ (Date information dump) ======");
+                    Console.WriteLine($"現在のシステム日付: {DateTime.Now:yyyy-MM-dd HH:mm:ss} (Current system date)");
+                    Console.WriteLine($"endDate: {endDate:yyyy-MM-dd HH:mm:ss}, Kind: {endDate.Kind}, Year: {endDate.Year} (End date details)");
+                    Console.WriteLine($"startDate: {startDate:yyyy-MM-dd HH:mm:ss}, Kind: {startDate.Kind}, Year: {startDate.Year} (Start date details)");
+                    Console.WriteLine("=================================================");
 
                     await downloadManager.DownloadStockDataAsync(
                         symbols, 
@@ -324,6 +403,7 @@ namespace USStockDownloader
             services.AddSingleton<IndexListService>();
             services.AddSingleton<SymbolListExportService>();
             services.AddSingleton<SBIStockFetcher>();
+            services.AddSingleton<YahooFinanceLatestTradingDateService>(); // YahooFinanceLatestTradingDateServiceをDIコンテナに登録
             
             Console.WriteLine("サービスを登録しました。 (Services registered.)");
             

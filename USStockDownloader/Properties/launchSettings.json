@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "USStockDownloader": {
+      "commandName": "Project",
+      "commandLineArgs": "--symbols AAPL,MSFT,GOOGL,AMZN,BRK.B -o .\\test_output"
+    }
+  }
+}

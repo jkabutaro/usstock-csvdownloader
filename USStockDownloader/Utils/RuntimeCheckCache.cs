@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Text.Json;
 
 namespace USStockDownloader.Utils
@@ -11,10 +13,7 @@ namespace USStockDownloader.Utils
 
     public static class RuntimeCheckCache
     {
-        private static readonly string CacheDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "USStockDownloader");
-        private static readonly string CacheFile = Path.Combine(CacheDirectory, "runtime_check.json");
+        private static readonly string CacheFile = CacheManager.GetCacheFilePath("runtime_check.json");
 
         public static RuntimeCheckResult? LoadCache()
         {
@@ -43,7 +42,6 @@ namespace USStockDownloader.Utils
         {
             try
             {
-                Directory.CreateDirectory(CacheDirectory);
                 var json = JsonSerializer.Serialize(result);
                 File.WriteAllText(CacheFile, json);
             }

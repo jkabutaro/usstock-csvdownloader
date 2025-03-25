@@ -11,13 +11,13 @@ public class YahooFinanceResponse
 public class Chart
 {
     [JsonPropertyName("result")]
-    public List<Result>? Result { get; set; }
+    public List<ChartResult>? Result { get; set; }
 
     [JsonPropertyName("error")]
     public object? Error { get; set; }
 }
 
-public class Result
+public class ChartResult
 {
     [JsonPropertyName("meta")]
     public Meta? Meta { get; set; }

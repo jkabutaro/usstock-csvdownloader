@@ -1,0 +1,31 @@
+code,name,market,type
+MMM,3M スリーエム,NYSE,stock
+AXP,American Express アメリカン・エキスプレス,NYSE,stock
+AMGN,Amgen アムジェン,NASDAQ,stock
+AMZN,Amazon アマゾン,NASDAQ,stock
+AAPL,Apple アップル,NASDAQ,stock
+BA,Boeing ボーイング,NYSE,stock
+CAT,Caterpillar キャタピラー,NYSE,stock
+CVX,Chevron シェブロン,NYSE,stock
+CSCO,Cisco シスコシステムズ,NASDAQ,stock
+KO,Coca-Cola コカ・コーラ,NYSE,stock
+DIS,Walt Disney ウォルト・ディズニー,NYSE,stock
+GS,Goldman Sachs ゴールドマン・サックス,NYSE,stock
+HD,Home Depot ホーム・デポ,NYSE,stock
+HON,Honeywell ハネウェル,NASDAQ,stock
+IBM,IBM アイビーエム,NYSE,stock
+JNJ,Johnson & Johnson ジョンソン・エンド・ジョンソン,NYSE,stock
+JPM,JPMorgan Chase JPモルガン・チェース,NYSE,stock
+MCD,McDonald's マクドナルド,NYSE,stock
+MRK,Merck メルク,NYSE,stock
+MSFT,Microsoft マイクロソフト,NASDAQ,stock
+NKE,Nike ナイキ,NYSE,stock
+NVDA,Nvidia エヌビディア,NASDAQ,stock
+PG,Procter & Gamble プロクター・アンド・ギャンブル,NYSE,stock
+CRM,Salesforce セールスフォース,NYSE,stock
+SHW,Sherwin-Williams シャーウィン・ウィリアムズ,NYSE,stock
+TRV,Travelers トラベラーズ,NYSE,stock
+UNH,UnitedHealth ユナイテッドヘルス,NYSE,stock
+VZ,Verizon ベライゾン,NYSE,stock
+V,Visa ビザ,NYSE,stock
+WMT,Walmart ウォルマート,NYSE,stock

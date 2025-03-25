@@ -1,3 +1,5 @@
+using System;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using USStockDownloader.Models;
 using System.Net.Http;
@@ -9,15 +11,56 @@ public class NYDCacheService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<NYDCacheService> _logger;
-    private readonly string _cacheFile;
+    private readonly string _cacheFilePath;
+    private readonly TimeSpan _cacheExpiry;
     private List<StockSymbol>? _cachedSymbols;
     private const string NYD_URL = "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average";
 
     public NYDCacheService(HttpClient httpClient, ILogger<NYDCacheService> logger)
+        : this(httpClient, logger, Path.Combine("Cache", "nyd_symbols.json"), TimeSpan.FromDays(1))
+    {
+    }
+
+    public NYDCacheService(HttpClient httpClient, ILogger<NYDCacheService> logger, string cacheFilePath, TimeSpan cacheExpiry)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _cacheFile = Path.Combine("Cache", "nyd_symbols.json");
+        _cacheFilePath = cacheFilePath;
+        _cacheExpiry = cacheExpiry;
+    }
+
+    public async Task<List<StockSymbol>> GetNYDSymbols()
+    {
+        if (_cachedSymbols != null)
+        {
+            return _cachedSymbols;
+        }
+
+        if (File.Exists(_cacheFilePath))
+        {
+            var fileInfo = new FileInfo(_cacheFilePath);
+            if (DateTime.Now - fileInfo.LastWriteTime < _cacheExpiry)
+            {
+                try
+                {
+                    var json = await File.ReadAllTextAsync(_cacheFilePath);
+                    _cachedSymbols = JsonSerializer.Deserialize<List<StockSymbol>>(json);
+                    if (_cachedSymbols != null)
+                    {
+                        _logger.LogInformation("Loaded {Count} NY Dow symbols from cache", _cachedSymbols.Count);
+                        return _cachedSymbols;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to load NY Dow symbols from cache");
+                }
+            }
+        }
+
+        _cachedSymbols = await FetchNYDSymbols();
+        await SaveSymbolsToCache(_cachedSymbols);
+        return _cachedSymbols;
     }
 
     public async Task<List<string>> GetSymbolsAsync()
@@ -30,45 +73,7 @@ public class NYDCacheService
     {
         _logger.LogInformation("Forcing update of NY Dow symbols");
         _cachedSymbols = await FetchNYDSymbols();
-        await SaveToCache(_cachedSymbols);
-    }
-
-    public async Task<List<StockSymbol>> GetNYDSymbols()
-    {
-        if (_cachedSymbols != null)
-        {
-            return _cachedSymbols;
-        }
-
-        if (File.Exists(_cacheFile))
-        {
-            try
-            {
-                var json = await File.ReadAllTextAsync(_cacheFile);
-                _cachedSymbols = System.Text.Json.JsonSerializer.Deserialize<List<StockSymbol>>(json);
-                if (_cachedSymbols != null)
-                {
-                    _logger.LogInformation("Loaded {Count} NY Dow symbols from cache", _cachedSymbols.Count);
-                    
-                    // デバッグ用：キャッシュから読み込んだ銘柄情報をログに出力
-                    foreach (var symbol in _cachedSymbols)
-                    {
-                        _logger.LogDebug("Symbol: {Symbol}, Name: {Name}, Market: {Market}, Type: {Type}", 
-                            symbol.Symbol, symbol.Name, symbol.Market, symbol.Type);
-                    }
-                    
-                    return _cachedSymbols;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to load NY Dow symbols from cache");
-            }
-        }
-
-        _cachedSymbols = await FetchNYDSymbols();
-        await SaveToCache(_cachedSymbols);
-        return _cachedSymbols;
+        await SaveSymbolsToCache(_cachedSymbols);
     }
 
     private async Task<List<StockSymbol>> FetchNYDSymbols()
@@ -82,24 +87,43 @@ public class NYDCacheService
             var doc = new HtmlDocument();
             doc.LoadHtml(content);
 
-            var table = doc.DocumentNode.SelectSingleNode("//table[contains(@class, 'wikitable') and contains(., 'Symbol')]");
+            var table = doc.DocumentNode.SelectSingleNode("//table[contains(@class, 'wikitable') and contains(@class, 'sortable')]");
             if (table == null)
             {
-                throw new Exception("Failed to find NY Dow constituents table");
+                throw new Exception("Failed to find NY Dow table");
             }
 
             var symbols = new List<StockSymbol>();
-            foreach (var row in table.SelectNodes(".//tr").Skip(1))
+            var rows = table.SelectNodes(".//tr");
+
+            if (rows == null)
+            {
+                throw new Exception("No rows found in NY Dow table");
+            }
+
+            foreach (var row in rows.Skip(1)) // Skip header row
             {
                 var cells = row.SelectNodes(".//td");
-                if (cells != null && cells.Count >= 2)
+                if (cells != null && cells.Count >= 2) // 少なくとも2列（会社名、シンボル）が必要
                 {
-                    var symbol = cells[1].InnerText.Trim();
-                    var name = cells[0].InnerText.Trim();
-                    if (!string.IsNullOrWhiteSpace(symbol))
-                    {
-                        symbols.Add(new StockSymbol { Symbol = symbol, Name = name });
-                    }
+                    var nameCell = cells[0];
+                    var symbolCell = cells[1];
+                    
+                    var name = nameCell.InnerText.Trim();
+                    var symbol = symbolCell.InnerText.Trim();
+                    
+                    // 市場情報の判定（NY DowはほとんどがNYSE）
+                    string market = "NYSE";
+                    
+                    // 種別の判定（NY Dowは全て個別株）
+                    string type = "stock";
+                    
+                    symbols.Add(new StockSymbol { 
+                        Symbol = symbol, 
+                        Name = name,
+                        Market = market,
+                        Type = type
+                    });
                 }
             }
 
@@ -113,18 +137,18 @@ public class NYDCacheService
         }
     }
 
-    private async Task SaveToCache(List<StockSymbol> symbols)
+    private async Task SaveSymbolsToCache(List<StockSymbol> symbols)
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_cacheFile)!);
-            var json = System.Text.Json.JsonSerializer.Serialize(symbols);
-            await File.WriteAllTextAsync(_cacheFile, json);
+            Directory.CreateDirectory(Path.GetDirectoryName(_cacheFilePath)!);
+            var json = JsonSerializer.Serialize(symbols);
+            await File.WriteAllTextAsync(_cacheFilePath, json);
             _logger.LogInformation("Saved {Count} NY Dow symbols to cache", symbols.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to save NY Dow symbols to cache");
+            _logger.LogWarning(ex, "Failed to save NY Dow symbols to cache");
         }
     }
 }

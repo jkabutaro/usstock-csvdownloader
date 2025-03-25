@@ -26,6 +26,7 @@ public class DownloadOptions
     public bool ForceSBIUpdate { get; set; } = false;
     public bool QuickMode { get; set; } = true;
     public bool ForceUpdate { get; set; } = false;
+    public bool CacheClear { get; set; } = false;
 
     public DateTime GetStartDate() => StartDate ?? DateTime.Now.AddYears(-1);
     public DateTime GetEndDate() => EndDate ?? DateTime.Now;
@@ -134,6 +135,10 @@ public class DownloadOptions
         var forceUpdateOption = new Option<bool>(
             new[] { "--force", "-F" },
             "Force update all symbols regardless of cache status");
+            
+        var cacheClearOption = new Option<bool>(
+            "--cacheclear",
+            "Clear all cache files before running (use for troubleshooting cache-related issues)");
 
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(sp500Option);
@@ -157,6 +162,7 @@ public class DownloadOptions
         rootCommand.AddOption(sbiForceOption);
         rootCommand.AddOption(quickModeOption);
         rootCommand.AddOption(forceUpdateOption);
+        rootCommand.AddOption(cacheClearOption);
 
         rootCommand.SetHandler(
             (context) =>
@@ -183,6 +189,7 @@ public class DownloadOptions
                 options.ForceSBIUpdate = context.ParseResult.GetValueForOption(sbiForceOption);
                 options.QuickMode = context.ParseResult.GetValueForOption(quickModeOption);
                 options.ForceUpdate = context.ParseResult.GetValueForOption(forceUpdateOption);
+                options.CacheClear = context.ParseResult.GetValueForOption(cacheClearOption);
                 
                 // ForceUpdateが指定されている場合は、QuickModeを無効にする
                 if (options.ForceUpdate)
@@ -244,11 +251,13 @@ public class DownloadOptions
         Console.WriteLine("  --listcsv <path>        銘柄リストをCSVファイルにエクスポート (Export symbol list to CSV file)");
         Console.WriteLine("  -q, --quick             クイックモード：更新が必要な銘柄のみをダウンロード (Quick mode: Only download symbols that need updating) [デフォルト]");
         Console.WriteLine("  --force, -F             強制更新モード：キャッシュの状態に関わらず全銘柄を更新 (Force update all symbols regardless of cache status)");
+        Console.WriteLine("  --cacheclear            実行前にすべてのキャッシュファイルを削除（キャッシュ関連の問題のトラブルシューティングに使用）(Clear all cache files before running)");
         Console.WriteLine("  -h, --help              このヘルプを表示 (Show this help)");
         Console.WriteLine();
         Console.WriteLine("例 (Examples):");
         Console.WriteLine("  USStockDownloader --sp500 -o ./data");
         Console.WriteLine("  USStockDownloader --symbols AAPL,MSFT,GOOG -o ./data");
         Console.WriteLine("  USStockDownloader --sp500 --force -o ./data");
+        Console.WriteLine("  USStockDownloader --cacheclear --sp500 -o ./data");
     }
 }

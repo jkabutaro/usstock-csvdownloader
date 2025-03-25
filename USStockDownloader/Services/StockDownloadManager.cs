@@ -29,6 +29,9 @@ public class StockDownloadManager
     public async Task DownloadStockDataAsync(List<string> symbols, string? outputDirectory = null, DateTime? startDate = null, DateTime? endDate = null, bool quickMode = false)
     {
         _logger.LogInformation("{Count}件の銘柄のダウンロードを開始します (Starting download for {Count} symbols)", symbols.Count, symbols.Count);
+        
+        _logger.LogInformation("【日付追跡】StockDownloadManager - 開始時 - start: {StartDate}, Year: {Year}, end: {EndDate}, Year: {Year} (Date tracking at start)",
+            startDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "", startDate?.Year ?? 0, endDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "", endDate?.Year ?? 0);
 
         // 出力ディレクトリの設定
         var outputDir = outputDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "StockData");
@@ -44,15 +47,21 @@ public class StockDownloadManager
         DateTime originalEndDate = end;
         DateTime adjustedEndDate = StockDataCache.AdjustToLatestTradingDay(end);
         
+        _logger.LogInformation("【日付追跡】StockDownloadManager - 終了日調整前 - originalEndDate: {OrigEndDate}, Year: {Year}, adjustedEndDate: {AdjEndDate}, Year: {Year} (Date tracking before end date adjustment)",
+            originalEndDate.ToString("yyyy-MM-dd HH:mm:ss"), originalEndDate.Year, adjustedEndDate.ToString("yyyy-MM-dd HH:mm:ss"), adjustedEndDate.Year);
+        
         // 調整が行われた場合はユーザーに通知
         if (adjustedEndDate != originalEndDate)
         {
-            _logger.LogInformation(
+            _logger.LogWarning(
                 $"指定された終了日（{originalEndDate:yyyy-MM-dd}）はまだデータが存在しないため、最新の取引日（{adjustedEndDate:yyyy-MM-dd}）に調整しました。 " +
                 $"(Adjusted end date from {originalEndDate:yyyy-MM-dd} to latest trading day {adjustedEndDate:yyyy-MM-dd})");
             
             // 調整された終了日を使用
             end = adjustedEndDate;
+            
+            _logger.LogInformation("【日付追跡】StockDownloadManager - 終了日調整後 - end: {EndDate}, Year: {Year} (Date tracking after end date adjustment)",
+                end.ToString("yyyy-MM-dd HH:mm:ss"), end.Year);
         }
 
         _logger.LogInformation("日付範囲: {StartDate}から{EndDate}まで (Date range)", 
@@ -298,8 +307,8 @@ public class StockDownloadManager
 
                 _logger.LogInformation("銘柄{Symbol}のデータを正常に保存しました (Successfully saved data)", symbol);
                 
-                // キャッシュを更新
-                StockDataCache.UpdateCache(symbol, startDate, endDate);
+                // キャッシュを更新（実際のデータリストを渡す）
+                StockDataCache.UpdateCache(symbol, startDate, endDate, stockDataList);
             }
             else
             {

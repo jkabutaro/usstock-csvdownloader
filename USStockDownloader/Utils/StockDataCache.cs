@@ -14,10 +14,7 @@ namespace USStockDownloader.Utils
 
     public static class StockDataCache
     {
-        private static readonly string CacheDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "USStockDownloader");
-        private static readonly string CacheFile = Path.Combine(CacheDirectory, "stock_data_cache.json");
+        private static readonly string CacheFile = CacheManager.GetCacheFilePath("stock_data_cache.json");
 
         private static readonly TimeSpan MarketOpenTime = TimeSpan.FromHours(9.5);
         private static readonly TimeSpan MarketCloseTime = TimeSpan.FromHours(16);
@@ -227,7 +224,6 @@ namespace USStockDownloader.Utils
         {
             try
             {
-                Directory.CreateDirectory(CacheDirectory);
                 var json = JsonSerializer.Serialize(cache);
                 File.WriteAllText(CacheFile, json);
             }
@@ -252,60 +248,90 @@ namespace USStockDownloader.Utils
                     
                     if (isMarketOpen)
                     {
-                        Console.WriteLine($"Symbol {symbol}: Market is open, update required");
+                        Console.WriteLine($"銘柄 {symbol}: 市場が開いているため更新が必要です (Market is open, update required)");
                         return true;
                     }
 
                     var timeSinceLastUpdate = DateTime.Now - info.LastUpdate;
                     if (timeSinceLastUpdate > maxAge)
                     {
-                        Console.WriteLine($"Symbol {symbol}: Cache is older than {maxAge.TotalHours} hours, update required");
+                        Console.WriteLine($"銘柄 {symbol}: キャッシュが{maxAge.TotalHours}時間より古いため更新が必要です (Cache is older than {maxAge.TotalHours} hours, update required)");
                         return true;
                     }
                     
                     if (info.LastTradingDate < lastTradingDay)
                     {
-                        Console.WriteLine($"Symbol {symbol}: Cache doesn't have latest trading day data, update required");
+                        Console.WriteLine($"銘柄 {symbol}: キャッシュに最新の取引日データがないため更新が必要です (Cache doesn't have latest trading day data, update required)");
                         return true;
                     }
                     
                     if (startDate < info.StartDate || adjustedEndDate > info.EndDate)
                     {
-                        Console.WriteLine($"Symbol {symbol}: Requested date range is outside cache range, update required");
+                        // 特別なケース: リクエストの終了日が現在日付で、キャッシュの終了日が前日（最新取引日）である場合
+                        bool isSpecialCase = adjustedEndDate.Date == DateTime.Now.Date && 
+                                            info.EndDate.Date == lastTradingDay.Date && 
+                                            startDate >= info.StartDate;
+                        
+                        if (isSpecialCase)
+                        {
+                            Console.WriteLine($"銘柄 {symbol}: リクエスト終了日が現在日付で、キャッシュの終了日が最新取引日のため、キャッシュを使用します (Request end date is today, cache end date is the latest trading day, using cache)");
+                            return false;
+                        }
+                        
+                        Console.WriteLine($"銘柄 {symbol}: リクエストされた日付範囲がキャッシュの範囲外のため更新が必要です (Requested date range is outside cache range, update required)");
+                        Console.WriteLine($"  リクエスト: {startDate:yyyy-MM-dd} ～ {adjustedEndDate:yyyy-MM-dd}, キャッシュ: {info.StartDate:yyyy-MM-dd} ～ {info.EndDate:yyyy-MM-dd}");
                         return true;
                     }
 
-                    Console.WriteLine($"Symbol {symbol}: Using cache, no update required");
+                    Console.WriteLine($"銘柄 {symbol}: キャッシュを使用します、更新は不要です (Using cache, no update required)");
                     return false;
                 }
                 
-                Console.WriteLine($"Symbol {symbol}: Not in cache, update required");
+                Console.WriteLine($"銘柄 {symbol}: キャッシュにないため更新が必要です (Not in cache, update required)");
                 return true; 
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Symbol {symbol}: Error checking cache: {ex.Message}, update required");
+                Console.WriteLine($"銘柄 {symbol}: キャッシュ確認中にエラーが発生しました: {ex.Message}、更新が必要です (Error checking cache: {ex.Message}, update required)");
                 return true; 
             }
         }
 
-        public static void UpdateCache(string symbol, DateTime startDate, DateTime endDate)
+        public static void UpdateCache(string symbol, DateTime startDate, DateTime endDate, List<Models.StockData>? stockDataList = null)
         {
             try
             {
                 var cache = LoadCache();
+                
+                // 実際のデータの日付範囲を使用する
+                DateTime actualStartDate = startDate;
+                DateTime actualEndDate = endDate;
+                
+                // stockDataListが提供されている場合は、実際のデータの日付範囲を使用
+                if (stockDataList != null && stockDataList.Any())
+                {
+                    actualStartDate = stockDataList.Min(d => d.DateTime);
+                    actualEndDate = stockDataList.Max(d => d.DateTime);
+                    Console.WriteLine($"銘柄 {symbol}: 実際のデータ範囲 {actualStartDate:yyyy-MM-dd} ～ {actualEndDate:yyyy-MM-dd} でキャッシュを更新します (Updating cache with actual data range)");
+                }
+                else
+                {
+                    Console.WriteLine($"銘柄 {symbol}: リクエスト範囲 {startDate:yyyy-MM-dd} ～ {endDate:yyyy-MM-dd} でキャッシュを更新します (Updating cache with requested range)");
+                }
+                
                 cache[symbol] = new StockDataCacheInfo
                 {
                     Symbol = symbol,
                     LastUpdate = DateTime.Now,
-                    StartDate = startDate,
-                    EndDate = endDate,
+                    StartDate = actualStartDate,
+                    EndDate = actualEndDate,
                     LastTradingDate = GetLastTradingDay() 
                 };
                 SaveCache(cache);
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"銘柄 {symbol}: キャッシュの更新に失敗しました: {ex.Message} (Failed to update cache: {ex.Message})");
             }
         }
     }

@@ -44,12 +44,7 @@ namespace USStockDownloader.Services
                 );
                 
             // キャッシュファイルのパスを設定
-            var appDataPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "USStockDownloader");
-                
-            Directory.CreateDirectory(appDataPath); // ディレクトリが存在しない場合は作成
-            _cacheFilePath = Path.Combine(appDataPath, "sbi_symbols_cache.json");
+            _cacheFilePath = Utils.CacheManager.GetCacheFilePath("sbi_symbols_cache.json");
         }
 
         /// <summary>
