@@ -296,13 +296,18 @@ public class StockDownloadManager
 
             if (stockDataList.Any())
             {
-                _logger.LogDebug("データを{OutputPath}に書き込んでいます (Writing data to)", fileName);
+                _logger.LogDebug("データを{OutputPath}に書き込んでいます (Writing data to)", PathUtils.ToRelativePath(fileName));
 
                 await using var writer = new StreamWriter(fileName);
-                await using var csv = new CsvWriter(writer, new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture)
+                var config = new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture)
                 {
                     ShouldQuote = args => false
-                });
+                };
+                await using var csv = new CsvWriter(writer, config);
+                
+                // 明示的にマッピングを登録
+                csv.Context.RegisterClassMap<StockDataMap>();
+                
                 await csv.WriteRecordsAsync(stockDataList);
 
                 _logger.LogInformation("銘柄{Symbol}のデータを正常に保存しました (Successfully saved data)", symbol);
@@ -328,7 +333,7 @@ public class StockDownloadManager
         try
         {
             var reportPath = Path.Combine(outputDir, "failed_symbols_report.csv");
-            _logger.LogInformation("失敗した銘柄のレポートを{ReportPath}に作成しています (Creating failed symbols report)", reportPath);
+            _logger.LogInformation("失敗した銘柄のレポートを{ReportPath}に作成しています (Creating failed symbols report)", PathUtils.ToRelativePath(reportPath));
             
             await using var writer = new StreamWriter(reportPath);
             await using var csv = new CsvWriter(writer, new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture));

@@ -116,4 +116,32 @@ usstock-csvdownloader/
 - 英語の補助テキストを提供することで国際的な利用も可能にする
 
 
+## 配布用ビルドプロトコル
+
+### 1. シングルファイル形式でのビルド（推奨：トリミング無効）
+- 配布用には必ずシングルファイル形式でビルドする
+- 以下のコマンドを使用：
+
+```bash
+dotnet publish USStockDownloader -c Release -o ./publish/v{バージョン}_notrimmed -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
+```
+
+‐ 依存DLLファイルを含めた単一の実行ファイルを生成
+‐ .NET Runtimeのインストールが不要（セルフコンテインド）
+‐ リフレクションベースの機能が正常に動作
+‐ 実行ファイルサイズ：約33MB
+
+### 2. 配布パッケージの構成
+- USStockDownloader.exe（シングルファイル形式でビルドされた実行ファイル）
+- README.md（詳細な説明）
+- RELEASE_NOTES.md（更新内容）
+- 使用方法ガイド.md（基本的な使い方の説明）
+- output/（空のディレクトリ） 
+- Cache/（空のディレクトリ）
+
+### 3. 配布時の注意点
+- 安定性を重視するので、トリミングを無効にしたビルドを使用すること
+- 配布用パッケージには必ず空のoutputディレクトリとCacheディレクトリを含める
+- ZIPアーカイブ名はUSStockDownloader_v{バージョン}.zipの形式で統一
+
 以上の指示に従い、確実で質の高い実装を行います。指示された範囲内でのみ処理を行い、不要な追加実装は行いません。不明点や重要な判断が必要な場合は、必ず確認を取ります。

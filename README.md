@@ -90,8 +90,9 @@ dotnet build USStockDownloader -c Release
 配布用には、依存ファイル（DLL）を含めた単一の実行ファイルを生成するシングルファイル形式でのビルドを推奨します。
 (For distribution, it is recommended to build in single-file format, which generates a single executable file that includes all dependencies (DLLs).)
 
+##### 推奨：トリミングを無効にしたビルド (Recommended: Build with Trimming Disabled)
 ```bash
-dotnet publish USStockDownloader -c Release -o ./publish/v{バージョン}_single -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:PublishTrimmed=true
+dotnet publish USStockDownloader -c Release -o ./publish/v{バージョン}_notrimmed -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 このコマンドにより、以下の特徴を持つ配布用ビルドが生成されます：
@@ -100,6 +101,23 @@ dotnet publish USStockDownloader -c Release -o ./publish/v{バージョン}_sing
 - 単一の実行ファイル（USStockDownloader.exe）のみで動作 (Operates with only a single executable file (USStockDownloader.exe))
 - 依存DLLファイルが不要（すべて実行ファイルに含まれる） (No dependent DLL files required (all included in the executable file))
 - .NET Runtimeのインストールが不要（セルフコンテインド） (No need to install .NET Runtime (self-contained))
+- 実行ファイルサイズ：約30-35MB (Executable file size: approximately 30-35MB)
+- リフレクションベースの機能が正常に動作 (Reflection-based features work correctly)
+
+##### 代替：トリミングを有効にしたビルド (Alternative: Build with Trimming Enabled)
+```bash
+dotnet publish USStockDownloader -c Release -o ./publish/v{バージョン}_trimmed -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:PublishTrimmed=true
+```
+
+このビルド方法の特徴：
+(Features of this build method:)
+
+- 実行ファイルサイズが小さい（約9-10MB） (Smaller executable file size (approximately 9-10MB))
+- リフレクションベースの機能が制限される場合がある (Reflection-based features may be limited)
+- CsvHelperなどのライブラリで問題が発生する可能性がある (May cause issues with libraries such as CsvHelper)
+
+**注意**: トリミングを有効にすると、リフレクションを使用するライブラリ（CsvHelperなど）で問題が発生する場合があります。安定性を重視する場合は、トリミングを無効にしたビルドを推奨します。
+(Note: Enabling trimming may cause issues with libraries that use reflection (such as CsvHelper). If you prioritize stability, it is recommended to build with trimming disabled.)
 
 #### 配布用ZIPパッケージの作成 (Creating a Distribution ZIP Package)
 配布用ZIPパッケージには以下のファイルを含めてください：
@@ -218,7 +236,7 @@ USStockDownloader --cacheclear --sp500 -o ./data
 
 3. **バフェットポートフォリオ銘柄キャッシュ (Buffett Portfolio Symbol Cache)**
    - 場所: `Cache/buffett_symbols.json`
-   - 内容: バフェットポートフォリオ銘柄のリスト（シンボル、名前、市場、種別情報）
+   - 内容: バフェットポートフォリオの銘柄リスト（シンボル、名前、市場、種別情報）
    - 有効期限: 1日（デフォルト）
 
 4. **インデックスキャッシュ (Index Cache)**
