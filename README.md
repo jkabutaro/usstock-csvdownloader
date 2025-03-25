@@ -546,3 +546,21 @@ Date,Open,High,Low,Close,AdjClose,Volume
 - **並列処理数**: 5（テスト時の設定） (Number of parallel processes: 5 (test setting))
 - **ダウンロード時間**: 約2分（並列処理数5の場合） (Download time: Approximately 2 minutes (with 5 parallel processes))
 - **成功率**: 100% (Success rate: 100%)
+
+## 更新履歴 (Update History)
+
+### 2025-03-25 キャッシュ機能の改善 (Cache Function Improvement)
+
+- **キャッシュ有効性判定の最適化** (Optimization of cache validity determination)
+  - リクエスト終了日が現在日付で、キャッシュの終了日が最新取引日の場合、キャッシュを有効と判断 (When the request end date is the current date and the cache end date is the latest trading day, the cache is considered valid)
+  - 不要なデータダウンロードを回避し、処理時間を短縮 (Avoids unnecessary data downloads and reduces processing time)
+  - API呼び出し回数の削減によるリソース節約 (Resource saving by reducing the number of API calls)
+
+- **詳細なログメッセージの追加** (Addition of detailed log messages)
+  - キャッシュ使用状況を日本語と英語の両方で明確に表示 (Clearly displays cache usage status in both Japanese and English)
+  - 「リクエスト終了日が現在日付で、キャッシュの終了日が最新取引日のため、キャッシュを使用します」などの詳細メッセージ (Detailed messages such as "Request end date is today, cache end date is the latest trading day, using cache")
+
+- **テスト結果** (Test Results)
+  - S&P 500およびNYダウの全銘柄で正常にキャッシュが機能 (Cache functions normally for all S&P 500 and NY Dow symbols)
+  - 2回目以降の実行では、最新データがすでにキャッシュされている場合、Yahoo Financeへのリクエストが発生せず処理が高速化 (From the second execution onwards, if the latest data is already cached, processing is accelerated without requests to Yahoo Finance)
+  - 並列処理数5での全銘柄ダウンロード時間：約2分（初回）、数秒（2回目以降、キャッシュ使用時） (Download time for all symbols with 5 parallel processes: about 2 minutes (first time), a few seconds (from the second time onwards, when using cache))
