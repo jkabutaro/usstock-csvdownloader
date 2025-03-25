@@ -84,6 +84,24 @@
 - リポジトリURL: https://github.com/jkabutaro/usstock-csvdownloader
 - 開発者: jkabutaro
 
+## ダウンロードとインストール
+
+### 方法1: ビルド済み実行可能ファイル（推奨）
+最も簡単な方法は、ビルド済みの実行可能ファイルをダウンロードすることです：
+
+1. [GitHubリリースページ](https://github.com/jkabutaro/usstock-csvdownloader/releases)から最新のリリース（USStockDownloader-v0.9.0.zip）をダウンロード
+2. ダウンロードしたZIPファイルを任意の場所に解凍
+3. `USStockDownloader.exe`をダブルクリックして実行
+
+※ 初回実行時に自動システム要件チェックが行われます。Windows 10以上および.NET 9.0 Runtimeが必要です。
+
+### 方法2: ソースコードからビルド
+```bash
+git clone https://github.com/jkabutaro/usstock-csvdownloader.git
+cd usstock-csvdownloader
+dotnet build
+```
+
 ## 使用方法
 
 ### システム要件
@@ -96,13 +114,6 @@
 - **Windows 10以降のチェック**: Windows 10以降でない場合、メッセージを表示して終了します
 - **.NET 9.0 Runtimeのチェック**: 必要なランタイムがインストールされていない場合、ダウンロードページを自動的に開き、インストール手順を案内します
 - **チェック結果のキャッシュ**: システム要件のチェック結果はキャッシュされ、次回起動時の処理を高速化します
-
-### インストール
-```bash
-git clone https://github.com/jkabutaro/usstock-csvdownloader.git
-cd USStockDownloader
-dotnet restore
-```
 
 ### 実行オプション
 
