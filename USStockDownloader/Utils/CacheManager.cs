@@ -41,8 +41,8 @@ namespace USStockDownloader.Utils
         }
         
         /// <summary>
-        /// すべてのキャッシュファイルを削除します
-        /// (Clears all cache files)
+        /// すべてのキャッシュファイルとフォルダを再帰的に削除します
+        /// (Recursively clears all cache files and folders)
         /// </summary>
         /// <returns>削除されたファイルの数 (Number of files deleted)</returns>
         public static int ClearAllCaches()
@@ -56,6 +56,7 @@ namespace USStockDownloader.Utils
             
             try
             {
+                // ファイルを削除
                 foreach (var file in Directory.GetFiles(CacheDirectory))
                 {
                     try
@@ -69,6 +70,19 @@ namespace USStockDownloader.Utils
                     }
                 }
                 
+                // サブディレクトリを再帰的に処理
+                foreach (var directory in Directory.GetDirectories(CacheDirectory))
+                {
+                    try
+                    {
+                        deletedCount += DeleteDirectoryContents(directory);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"キャッシュディレクトリ '{Path.GetFileName(directory)}' の削除中にエラーが発生しました: {ex.Message} (Error occurred while deleting cache directory)");
+                    }
+                }
+                
                 return deletedCount;
             }
             catch (Exception ex)
@@ -76,6 +90,49 @@ namespace USStockDownloader.Utils
                 Console.WriteLine($"キャッシュのクリア中にエラーが発生しました: {ex.Message} (Error occurred while clearing cache)");
                 return deletedCount;
             }
+        }
+        
+        /// <summary>
+        /// ディレクトリの中身を再帰的に削除します
+        /// (Recursively deletes the contents of a directory)
+        /// </summary>
+        /// <param name="directoryPath">削除するディレクトリのパス (Path to the directory to delete)</param>
+        /// <returns>削除されたファイルの数 (Number of files deleted)</returns>
+        private static int DeleteDirectoryContents(string directoryPath)
+        {
+            int deletedCount = 0;
+            
+            // ファイルを削除
+            foreach (var file in Directory.GetFiles(directoryPath))
+            {
+                try
+                {
+                    File.Delete(file);
+                    deletedCount++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"ファイル '{Path.GetFileName(file)}' の削除中にエラーが発生しました: {ex.Message} (Error occurred while deleting file)");
+                }
+            }
+            
+            // サブディレクトリを再帰的に処理
+            foreach (var subDirectory in Directory.GetDirectories(directoryPath))
+            {
+                deletedCount += DeleteDirectoryContents(subDirectory);
+            }
+            
+            // 空になったディレクトリを削除
+            try
+            {
+                Directory.Delete(directoryPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ディレクトリ '{Path.GetFileName(directoryPath)}' の削除中にエラーが発生しました: {ex.Message} (Error occurred while deleting directory)");
+            }
+            
+            return deletedCount;
         }
     }
 }

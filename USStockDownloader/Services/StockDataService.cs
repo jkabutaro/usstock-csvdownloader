@@ -47,10 +47,8 @@ public class StockDataService : IStockDataService
                     TimeSpan.FromMilliseconds(_random.Next(0, 1000)) // ジッター
             );
             
-        // キャッシュディレクトリのパスを設定
-        _cacheDirPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "USStockDownloader", "StockDataCache");
+        // キャッシュディレクトリのパスを設定（相対パスを使用）
+        _cacheDirPath = Path.Combine("Cache", "StockDataCache");
             
         // ディレクトリが存在しない場合は作成
         if (!Directory.Exists(_cacheDirPath))
@@ -295,19 +293,21 @@ public class StockDataService : IStockDataService
                     endDate = temp;
                 }
 
-                // 日付をUnixタイムスタンプに変換（UTC基準）
-                var unixStartTime = new DateTimeOffset(startDate, TimeSpan.Zero).ToUnixTimeSeconds();
-                var unixEndTime = new DateTimeOffset(endDate, TimeSpan.Zero).ToUnixTimeSeconds();
+                // 日付を米国東部標準時（EST、UTC-5）の正午に設定してUnixタイムスタンプに変換
+                var startDateEST = new DateTime(startDate.Year, startDate.Month, startDate.Day, 12, 0, 0);
+                var endDateEST = new DateTime(endDate.Year, endDate.Month, endDate.Day, 12, 0, 0);
+                var unixStartTime = new DateTimeOffset(startDateEST, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
+                var unixEndTime = new DateTimeOffset(endDateEST, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
 
                 _logger.LogInformation("【日付追跡】StockDataService - Unix変換後 - startDate: {StartDate}, unixStartTime: {UnixStart}, endDate: {EndDate}, unixEndTime: {UnixEnd} (Date tracking after Unix conversion)",
-                    startDate.ToString("yyyy-MM-dd HH:mm:ss"), unixStartTime, endDate.ToString("yyyy-MM-dd HH:mm:ss"), unixEndTime);
+                    startDateEST.ToString("yyyy-MM-dd HH:mm:ss"), unixStartTime, endDateEST.ToString("yyyy-MM-dd HH:mm:ss"), unixEndTime);
                 
                 // 変換後の日付を逆算して確認
                 var checkStartDate = DateTimeOffset.FromUnixTimeSeconds(unixStartTime).DateTime;
                 var checkEndDate = DateTimeOffset.FromUnixTimeSeconds(unixEndTime).DateTime;
                 _logger.LogInformation("【日付追跡】StockDataService - Unix変換チェック - 元のstartDate: {OrigStartDate}, 変換後: {ConvStartDate}, 元のendDate: {OrigEndDate}, 変換後: {ConvEndDate} (Date tracking - Unix conversion check)",
-                    startDate.ToString("yyyy-MM-dd HH:mm:ss"), checkStartDate.ToString("yyyy-MM-dd HH:mm:ss"),
-                    endDate.ToString("yyyy-MM-dd HH:mm:ss"), checkEndDate.ToString("yyyy-MM-dd HH:mm:ss"));
+                    startDateEST.ToString("yyyy-MM-dd HH:mm:ss"), checkStartDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                    endDateEST.ToString("yyyy-MM-dd HH:mm:ss"), checkEndDate.ToString("yyyy-MM-dd HH:mm:ss"));
 
                 _logger.LogDebug("Unixタイムスタンプ - 開始: {StartTime}, 終了: {EndTime} (Unix timestamps)", unixStartTime, unixEndTime);
 
@@ -537,9 +537,11 @@ public class StockDataService : IStockDataService
                 endDate = temp;
             }
 
-            // 日付をUnixタイムスタンプに変換（UTC基準）
-            var unixStartTime = new DateTimeOffset(startDate, TimeSpan.Zero).ToUnixTimeSeconds();
-            var unixEndTime = new DateTimeOffset(endDate, TimeSpan.Zero).ToUnixTimeSeconds();
+            // 日付を米国東部標準時（EST、UTC-5）の正午に設定してUnixタイムスタンプに変換
+            var startDateEST = new DateTime(startDate.Year, startDate.Month, startDate.Day, 12, 0, 0);
+            var endDateEST = new DateTime(endDate.Year, endDate.Month, endDate.Day, 12, 0, 0);
+            var unixStartTime = new DateTimeOffset(startDateEST, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
+            var unixEndTime = new DateTimeOffset(endDateEST, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
 
             // ピリオドを含むシンボルの特別処理（例：BRK.B → BRK-B）
             string yahooSymbol = symbol;
