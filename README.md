@@ -341,7 +341,7 @@ Date,Open,High,Low,Close,AdjClose,Volume
    - 内容:
      - SBI証券で取り扱いのある米国株式の銘柄リスト（`--sbi --listcsv`で出力）
      - 形式: code,name,market,type
-     - エンコーディング: UTF-8
+     - エンコーディング: Shift-JIS
    - 例:
      ```csv
      code,name,market,type
