@@ -648,6 +648,20 @@ Date,Open,High,Low,Close,AdjClose,Volume
 
 ## 更新履歴 (Update History)
 
+### 2025-03-25 キャッシュ管理と日付変換処理の改善 (Cache Management and Date Conversion Improvements)
+
+- **キャッシュディレクトリの再帰的クリア機能** (Recursive cache directory clearing function)
+  - `ClearAllCaches()`メソッドを再帰的に動作するように改善 (Improved the `ClearAllCaches()` method to work recursively)
+  - サブディレクトリとその中のファイルも確実に削除 (Ensures deletion of subdirectories and their files)
+  - `--cacheclear`オプション使用時の動作を強化 (Enhanced behavior when using the `--cacheclear` option)
+  - 階層化されたキャッシュ構造に対応 (Supports hierarchical cache structures)
+
+- **Yahoo Finance API用の日付変換処理の最適化** (Optimization of date conversion for Yahoo Finance API)
+  - 日付をUnixタイムスタンプに変換する際に米国東部標準時（EST、UTC-5）の正午を基準に設定 (Set the conversion of dates to Unix timestamps based on noon Eastern Standard Time (EST, UTC-5))
+  - 米国市場の取引時間に合わせた一貫性のある時間設定 (Consistent time settings aligned with US market trading hours)
+  - データ取得の精度と一貫性を向上 (Improved accuracy and consistency of data retrieval)
+  - 特殊シンボル（BRK.B、BF.B、ETRなど）のデータ取得成功率を向上 (Improved success rate for data retrieval of special symbols (BRK.B, BF.B, ETR, etc.))
+
 ### 2025-03-25 営業日チェック機能の改善 (Trading Day Check Function Improvement)
 
 - **営業日チェック機能の効率化** (Optimization of trading day check function)
