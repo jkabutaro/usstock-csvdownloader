@@ -230,13 +230,13 @@ public class DownloadOptions
         Console.WriteLine("  USStockDownloader [options]");
         Console.WriteLine();
         Console.WriteLine("オプション (Options):");
-        Console.WriteLine("  --index                 主要指数を使用 (Use major indices)");
-        Console.WriteLine("  --sp500                 S&P 500の銘柄を使用 (Use S&P 500 symbols)");
-        Console.WriteLine("  --nyd               NYダウの銘柄を使用 (Use NY Dow symbols)");
-        Console.WriteLine("  --buffett           バフェットのポートフォリオ銘柄を使用 (Use Buffett's portfolio symbols)");
-        Console.WriteLine("  --sbi                   SBI証券取扱いの米国株銘柄を使用 (Use SBI Securities US stock symbols)");
-        Console.WriteLine("  --file <path>       銘柄シンボルファイルのパス (Path to the symbol file)");
-        Console.WriteLine("  --symbols <symbols>     カンマ区切りの銘柄シンボルリスト (Comma-separated list of stock symbols)");
+        Console.WriteLine("  --index                 主要指数を取得 (Use major indices)");
+        Console.WriteLine("  --sp500                 S&P 500の銘柄を取得 (Use S&P 500 symbols)");
+        Console.WriteLine("  --nyd               NYダウの銘柄を取得 (Use NY Dow symbols)");
+        Console.WriteLine("  --buffett           バフェットのポートフォリオ銘柄を取得 (Use Buffett's portfolio symbols)");
+        Console.WriteLine("  --sbi                   SBI証券取扱いの米国株銘柄を取得 (Use SBI Securities US stock symbols)");
+        Console.WriteLine("  --file <path>       ファイル指定で取得 銘柄シンボルファイルのパス (Path to the symbol file)");
+        Console.WriteLine("  --symbols <symbols>     カンマ区切りに直接指定で取得　銘柄シンボルリスト (Comma-separated list of stock symbols)");
         Console.WriteLine("  --listcsv <path>        銘柄リストをCSVファイルにエクスポート (Export symbol list to CSV file)");
         Console.WriteLine("  --output <path>      ダウンロードしたデータの出力ディレクトリ (Output directory)");
         Console.WriteLine("  --start-date <date>     履歴データの開始日 yyyy-MM-dd形式 (Start date for historical data)");
@@ -248,6 +248,7 @@ public class DownloadOptions
         Console.WriteLine("  --exponential       リトライに指数バックオフを使用 (Use exponential backoff for retries)");
         Console.WriteLine();
         Console.WriteLine("例 (Examples):");
+        Console.WriteLine("  USStockDownloader --index --output ./data");
         Console.WriteLine("  USStockDownloader --sp500 --output ./data");
         Console.WriteLine("  USStockDownloader --symbols AAPL,MSFT,GOOG --output ./data");
         Console.WriteLine("  USStockDownloader --sp500 --output ./data");
