@@ -1,0 +1,132 @@
+2025-03-26 14:24:05.773 +09:00 [INF] Exporting index list to CSV...
+2025-03-26 14:24:05.799 +09:00 [INF] Getting major indices list
+2025-03-26 14:24:05.807 +09:00 [INF] Using cached index list from Cache\index_symbols.json
+2025-03-26 14:24:05.817 +09:00 [INF] Writing 7 indices to list.csv
+2025-03-26 14:24:05.829 +09:00 [INF] Successfully exported index list to list.csv
+2025-03-26 14:24:15.660 +09:00 [ERR] CSVリスト出力には銘柄ソースの指定が必要です (--sp500, --nyd, --buffett, --index, --sbi) (CSV list export requires symbol source specification)
+2025-03-26 14:24:27.099 +09:00 [INF] Exporting index list to CSV...
+2025-03-26 14:24:27.125 +09:00 [INF] Forcing update of major indices list
+2025-03-26 14:24:27.127 +09:00 [INF] Forcing update of index list from Yahoo Finance...
+2025-03-26 14:24:27.131 +09:00 [INF] Fetching indices from Yahoo Finance using Playwright...
+2025-03-26 14:25:09.221 +09:00 [ERR] Error using Playwright to fetch indices from Yahoo Finance. Using default indices.
+System.TimeoutException: Timeout 30000ms exceeded.
+ ---> System.TimeoutException: Timeout 30000ms exceeded.
+   at Microsoft.Playwright.Helpers.TaskHelper.<>c__DisplayClass2_0.<WithTimeout>b__0() in /_/src/Playwright/Helpers/TaskHelper.cs:line 73
+   at Microsoft.Playwright.Helpers.TaskHelper.WithTimeout(Task task, Func`1 timeoutAction, TimeSpan timeout, CancellationToken cancellationToken) in /_/src/Playwright/Helpers/TaskHelper.cs:line 109
+   at Microsoft.Playwright.Core.Waiter.WaitForPromiseAsync[T](Task`1 task, Action dispose) in /_/src/Playwright/Core/Waiter.cs:line 218
+   --- End of inner exception stack trace ---
+   at Microsoft.Playwright.Core.Waiter.WaitForPromiseAsync[T](Task`1 task, Action dispose) in /_/src/Playwright/Core/Waiter.cs:line 226
+   at Microsoft.Playwright.Core.Frame.WaitForLoadStateAsync(Nullable`1 state, FrameWaitForLoadStateOptions options) in /_/src/Playwright/Core/Frame.cs:line 235
+   at USStockDownloader.Services.IndexCacheService.FetchIndicesFromYahooFinanceAsync() in C:\Dropbox\Dropbox\claude_works\usstock_csvdownloder\USStockDownloader\Services\IndexCacheService.cs:line 104
+   at USStockDownloader.Services.IndexCacheService.FetchIndicesFromYahooFinanceAsync() in C:\Dropbox\Dropbox\claude_works\usstock_csvdownloder\USStockDownloader\Services\IndexCacheService.cs:line 173
+2025-03-26 14:25:09.236 +09:00 [INF] Saved 7 indices to cache file Cache\index_symbols.json
+2025-03-26 14:25:09.238 +09:00 [INF] Writing 7 indices to list.csv
+2025-03-26 14:25:09.248 +09:00 [INF] Successfully exported index list to list.csv
+2025-03-26 14:26:24.248 +09:00 [INF] Exporting index list to CSV...
+2025-03-26 14:26:24.273 +09:00 [INF] Forcing update of major indices list
+2025-03-26 14:26:24.274 +09:00 [INF] Forcing update of index list from Yahoo Finance...
+2025-03-26 14:26:24.279 +09:00 [INF] Fetching indices from Yahoo Finance using Playwright...
+2025-03-26 14:26:24.858 +09:00 [INF] Navigating to Yahoo Finance page: https://finance.yahoo.com/world-indices
+2025-03-26 14:26:34.492 +09:00 [INF] Waiting for page to load (DOM Content)...
+2025-03-26 14:26:34.501 +09:00 [INF] Waiting for table element to be visible...
+2025-03-26 14:26:34.548 +09:00 [INF] Table element found
+2025-03-26 14:26:34.549 +09:00 [INF] Yahoo Finance page loaded successfully
+2025-03-26 14:26:34.683 +09:00 [INF] Successfully fetched 41 indices from Yahoo Finance
+2025-03-26 14:26:34.697 +09:00 [INF] Saved 41 indices to cache file Cache\index_symbols.json
+2025-03-26 14:26:34.769 +09:00 [INF] Writing 41 indices to list.csv
+2025-03-26 14:26:34.778 +09:00 [INF] Successfully exported index list to list.csv
+2025-03-26 14:46:34.041 +09:00 [INF] Exporting index list to CSV...
+2025-03-26 14:46:34.066 +09:00 [INF] Forcing update of major indices list
+2025-03-26 14:46:34.068 +09:00 [INF] Forcing update of index list from Yahoo Finance...
+2025-03-26 14:46:34.073 +09:00 [INF] Fetching indices from Yahoo Finance using Playwright...
+2025-03-26 14:46:34.675 +09:00 [INF] Navigating to Yahoo Finance page: https://finance.yahoo.com/world-indices
+2025-03-26 14:46:40.418 +09:00 [INF] Waiting for page to load (DOM Content)...
+2025-03-26 14:46:40.427 +09:00 [INF] Waiting for table element to be visible...
+2025-03-26 14:46:40.465 +09:00 [INF] Table element found
+2025-03-26 14:46:40.467 +09:00 [INF] Yahoo Finance page loaded successfully
+2025-03-26 14:46:40.597 +09:00 [INF] Checking historical data availability for symbol: ^GSPC
+2025-03-26 14:47:08.998 +09:00 [INF] Historical data is available for symbol: ^GSPC
+2025-03-26 14:47:08.998 +09:00 [INF] Checking historical data availability for symbol: ^DJI
+2025-03-26 14:47:12.701 +09:00 [INF] Historical data is available for symbol: ^DJI
+2025-03-26 14:47:12.702 +09:00 [INF] Checking historical data availability for symbol: ^IXIC
+2025-03-26 14:47:15.383 +09:00 [INF] Historical data is available for symbol: ^IXIC
+2025-03-26 14:47:15.384 +09:00 [INF] Checking historical data availability for symbol: ^NYA
+2025-03-26 14:47:18.223 +09:00 [INF] Historical data is available for symbol: ^NYA
+2025-03-26 14:47:18.224 +09:00 [INF] Checking historical data availability for symbol: ^XAX
+2025-03-26 14:47:19.870 +09:00 [INF] Historical data is available for symbol: ^XAX
+2025-03-26 14:47:19.870 +09:00 [INF] Checking historical data availability for symbol: ^BUK100P
+2025-03-26 14:47:21.846 +09:00 [INF] Historical data is available for symbol: ^BUK100P
+2025-03-26 14:47:21.847 +09:00 [INF] Checking historical data availability for symbol: ^RUT
+2025-03-26 14:47:23.703 +09:00 [INF] Historical data is available for symbol: ^RUT
+2025-03-26 14:47:23.704 +09:00 [INF] Checking historical data availability for symbol: ^VIX
+2025-03-26 14:47:26.115 +09:00 [INF] Historical data is available for symbol: ^VIX
+2025-03-26 14:47:26.116 +09:00 [INF] Checking historical data availability for symbol: ^FTSE
+2025-03-26 14:47:28.670 +09:00 [INF] Historical data is available for symbol: ^FTSE
+2025-03-26 14:47:28.671 +09:00 [INF] Checking historical data availability for symbol: ^GDAXI
+2025-03-26 14:47:31.067 +09:00 [INF] Historical data is available for symbol: ^GDAXI
+2025-03-26 14:47:31.067 +09:00 [INF] Checking historical data availability for symbol: ^FCHI
+2025-03-26 14:47:32.894 +09:00 [INF] Historical data is available for symbol: ^FCHI
+2025-03-26 14:47:32.895 +09:00 [INF] Checking historical data availability for symbol: ^STOXX50E
+2025-03-26 14:47:34.831 +09:00 [INF] Historical data is available for symbol: ^STOXX50E
+2025-03-26 14:47:34.833 +09:00 [INF] Checking historical data availability for symbol: ^N100
+2025-03-26 14:47:36.790 +09:00 [INF] Historical data is available for symbol: ^N100
+2025-03-26 14:47:36.791 +09:00 [INF] Checking historical data availability for symbol: ^BFX
+2025-03-26 14:47:39.593 +09:00 [INF] Historical data is available for symbol: ^BFX
+2025-03-26 14:47:39.594 +09:00 [INF] Checking historical data availability for symbol: MOEX.ME
+2025-03-26 14:47:41.295 +09:00 [INF] Historical data is available for symbol: MOEX.ME
+2025-03-26 14:47:41.296 +09:00 [INF] Checking historical data availability for symbol: ^HSI
+2025-03-26 14:47:45.718 +09:00 [INF] Historical data is available for symbol: ^HSI
+2025-03-26 14:47:45.719 +09:00 [INF] Checking historical data availability for symbol: ^STI
+2025-03-26 14:47:48.848 +09:00 [INF] Historical data is available for symbol: ^STI
+2025-03-26 14:47:48.848 +09:00 [INF] Checking historical data availability for symbol: ^AXJO
+2025-03-26 14:47:51.136 +09:00 [INF] Historical data is available for symbol: ^AXJO
+2025-03-26 14:47:51.137 +09:00 [INF] Checking historical data availability for symbol: ^AORD
+2025-03-26 14:47:52.920 +09:00 [INF] Historical data is available for symbol: ^AORD
+2025-03-26 14:47:52.921 +09:00 [INF] Checking historical data availability for symbol: ^BSESN
+2025-03-26 14:47:55.500 +09:00 [INF] Historical data is available for symbol: ^BSESN
+2025-03-26 14:47:55.500 +09:00 [INF] Checking historical data availability for symbol: ^JKSE
+2025-03-26 14:47:57.661 +09:00 [INF] Historical data is available for symbol: ^JKSE
+2025-03-26 14:47:57.661 +09:00 [INF] Checking historical data availability for symbol: ^KLSE
+2025-03-26 14:48:02.035 +09:00 [INF] Historical data is available for symbol: ^KLSE
+2025-03-26 14:48:02.035 +09:00 [INF] Checking historical data availability for symbol: ^NZ50
+2025-03-26 14:48:04.678 +09:00 [INF] Historical data is available for symbol: ^NZ50
+2025-03-26 14:48:04.679 +09:00 [INF] Checking historical data availability for symbol: ^KS11
+2025-03-26 14:48:06.430 +09:00 [INF] Historical data is available for symbol: ^KS11
+2025-03-26 14:48:06.431 +09:00 [INF] Checking historical data availability for symbol: ^TWII
+2025-03-26 14:48:08.649 +09:00 [INF] Historical data is available for symbol: ^TWII
+2025-03-26 14:48:08.650 +09:00 [INF] Checking historical data availability for symbol: ^GSPTSE
+2025-03-26 14:48:11.498 +09:00 [INF] Historical data is available for symbol: ^GSPTSE
+2025-03-26 14:48:11.499 +09:00 [INF] Checking historical data availability for symbol: ^BVSP
+2025-03-26 14:48:13.481 +09:00 [INF] Historical data is available for symbol: ^BVSP
+2025-03-26 14:48:13.482 +09:00 [INF] Checking historical data availability for symbol: ^MXX
+2025-03-26 14:48:16.530 +09:00 [INF] Historical data is available for symbol: ^MXX
+2025-03-26 14:48:16.531 +09:00 [INF] Checking historical data availability for symbol: ^IPSA
+2025-03-26 14:48:18.441 +09:00 [INF] Historical data is available for symbol: ^IPSA
+2025-03-26 14:48:18.442 +09:00 [INF] Checking historical data availability for symbol: ^MERV
+2025-03-26 14:48:20.642 +09:00 [INF] Historical data is available for symbol: ^MERV
+2025-03-26 14:48:20.643 +09:00 [INF] Checking historical data availability for symbol: ^TA125.TA
+2025-03-26 14:48:23.266 +09:00 [INF] Historical data is available for symbol: ^TA125.TA
+2025-03-26 14:48:23.267 +09:00 [INF] Checking historical data availability for symbol: ^CASE30
+2025-03-26 14:48:25.131 +09:00 [INF] Historical data is available for symbol: ^CASE30
+2025-03-26 14:48:25.132 +09:00 [INF] Checking historical data availability for symbol: ^JN0U.JO
+2025-03-26 14:48:27.015 +09:00 [INF] Historical data is available for symbol: ^JN0U.JO
+2025-03-26 14:48:27.016 +09:00 [INF] Checking historical data availability for symbol: DX-Y.NYB
+2025-03-26 14:48:29.448 +09:00 [INF] Historical data is available for symbol: DX-Y.NYB
+2025-03-26 14:48:29.449 +09:00 [INF] Checking historical data availability for symbol: ^125904-USD-STRD
+2025-03-26 14:48:31.728 +09:00 [INF] Historical data is available for symbol: ^125904-USD-STRD
+2025-03-26 14:48:31.728 +09:00 [INF] Checking historical data availability for symbol: ^XDB
+2025-03-26 14:48:34.692 +09:00 [INF] Historical data is available for symbol: ^XDB
+2025-03-26 14:48:34.692 +09:00 [INF] Checking historical data availability for symbol: ^XDE
+2025-03-26 14:48:36.789 +09:00 [INF] Historical data is available for symbol: ^XDE
+2025-03-26 14:48:36.790 +09:00 [INF] Checking historical data availability for symbol: 000001.SS
+2025-03-26 14:48:39.403 +09:00 [INF] Historical data is available for symbol: 000001.SS
+2025-03-26 14:48:39.404 +09:00 [INF] Checking historical data availability for symbol: ^N225
+2025-03-26 14:48:42.669 +09:00 [INF] Historical data is available for symbol: ^N225
+2025-03-26 14:48:42.669 +09:00 [INF] Checking historical data availability for symbol: ^XDN
+2025-03-26 14:48:44.612 +09:00 [INF] Historical data is available for symbol: ^XDN
+2025-03-26 14:48:44.612 +09:00 [INF] Checking historical data availability for symbol: ^XDA
+2025-03-26 14:48:46.295 +09:00 [INF] Historical data is available for symbol: ^XDA
+2025-03-26 14:48:46.296 +09:00 [INF] Successfully fetched 41 indices from Yahoo Finance
+2025-03-26 14:48:46.308 +09:00 [INF] Saved 41 indices to cache file Cache\index_symbols.json
+2025-03-26 14:48:46.392 +09:00 [INF] Writing 41 indices to list_with_historical_check.csv
+2025-03-26 14:48:46.402 +09:00 [INF] Successfully exported index list to list_with_historical_check.csv

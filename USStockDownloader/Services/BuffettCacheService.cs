@@ -6,6 +6,7 @@ using System.Net.Http;
 using HtmlAgilityPack;
 using System.IO;
 using System.Text.RegularExpressions;
+using USStockDownloader.Utils;
 
 namespace USStockDownloader.Services
 {
@@ -19,7 +20,7 @@ namespace USStockDownloader.Services
         private const string CacheFileName = "buffett_symbols.json";
 
         public BuffettCacheService(HttpClient httpClient, ILogger<BuffettCacheService> logger)
-            : this(httpClient, logger, Path.Combine(Directory.GetCurrentDirectory(), CacheFileName), TimeSpan.FromHours(24))
+            : this(httpClient, logger, CacheManager.GetCacheFilePath(CacheFileName), TimeSpan.FromHours(24))
         {
         }
 
@@ -33,13 +34,12 @@ namespace USStockDownloader.Services
 
         public async Task<List<StockSymbol>> GetSymbolsAsync(bool forceUpdate = false)
         {
-            var cachePath = _cacheFilePath;
-            var cacheExists = File.Exists(cachePath);
+            var cacheExists = File.Exists(_cacheFilePath);
             var cacheExpired = false;
 
             if (cacheExists)
             {
-                var fileInfo = new FileInfo(cachePath);
+                var fileInfo = new FileInfo(_cacheFilePath);
                 cacheExpired = (DateTime.Now - fileInfo.LastWriteTime) > _cacheExpiry;
             }
 
@@ -47,12 +47,12 @@ namespace USStockDownloader.Services
             {
                 _logger.LogInformation("Fetching Buffett portfolio symbols from Wikipedia");
                 var fetchedSymbols = await FetchFromWikipediaAsync();
-                await SaveToCacheAsync(fetchedSymbols, cachePath);
+                await SaveToCacheAsync(fetchedSymbols, _cacheFilePath);
                 return ApplySymbolMappings(fetchedSymbols);
             }
 
-            _logger.LogInformation("Loading Buffett portfolio symbols from cache");
-            var cachedSymbols = await LoadFromCacheAsync(cachePath);
+            _logger.LogInformation("Loading Buffett portfolio symbols from cache {CacheFile}", PathUtils.ToRelativePath(_cacheFilePath));
+            var cachedSymbols = await LoadFromCacheAsync(_cacheFilePath);
             _logger.LogInformation("Loaded {Count} Buffett portfolio symbols", cachedSymbols.Count);
             return ApplySymbolMappings(cachedSymbols);
         }
@@ -60,9 +60,8 @@ namespace USStockDownloader.Services
         public async Task ForceUpdateAsync()
         {
             _logger.LogInformation("Forcing update of Buffett portfolio symbols...");
-            var cachePath = _cacheFilePath;
             var fetchedSymbols = await FetchFromWikipediaAsync();
-            await SaveToCacheAsync(fetchedSymbols, cachePath);
+            await SaveToCacheAsync(fetchedSymbols, _cacheFilePath);
         }
 
         private async Task<List<StockSymbol>> FetchFromWikipediaAsync()
@@ -219,18 +218,12 @@ namespace USStockDownloader.Services
             {
                 var json = await File.ReadAllTextAsync(cachePath);
                 var symbols = JsonSerializer.Deserialize<List<StockSymbol>>(json);
-                if (symbols != null)
-                {
-                    _logger.LogInformation("Loaded {Count} Buffett portfolio symbols from cache", symbols.Count);
-                    return symbols;
-                }
-
-                throw new Exception("Cache file exists but could not be deserialized");
+                return symbols ?? new List<StockSymbol>();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load Buffett portfolio from cache");
-                return AddHardcodedSymbols();
+                _logger.LogError("バフェットポートフォリオ銘柄のキャッシュファイルからの読み込みに失敗しました: {CacheFile} - {ErrorMessage} (Failed to load Buffett portfolio symbols from cache file)", PathUtils.ToRelativePath(cachePath), ex.Message);
+                return new List<StockSymbol>();
             }
         }
 
@@ -238,19 +231,20 @@ namespace USStockDownloader.Services
         {
             try
             {
+                // キャッシュディレクトリが存在しない場合は作成
                 var cacheDir = Path.GetDirectoryName(cachePath);
-                if (!Directory.Exists(cacheDir))
+                if (!string.IsNullOrEmpty(cacheDir) && !Directory.Exists(cacheDir))
                 {
-                    Directory.CreateDirectory(cacheDir!);
+                    Directory.CreateDirectory(cacheDir);
                 }
 
                 var json = JsonSerializer.Serialize(symbols, new JsonSerializerOptions { WriteIndented = true });
                 await File.WriteAllTextAsync(cachePath, json);
-                _logger.LogInformation("Saved {Count} symbols to cache", symbols.Count);
+                _logger.LogInformation("Saved {Count} Buffett portfolio symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(cachePath));
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to save Buffett portfolio symbols to cache");
+                _logger.LogError("バフェットポートフォリオ銘柄のキャッシュファイルへの保存に失敗しました: {CacheFile} - {ErrorMessage} (Failed to save Buffett portfolio symbols to cache file)", PathUtils.ToRelativePath(cachePath), ex.Message);
             }
         }
     }

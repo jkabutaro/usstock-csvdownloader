@@ -129,16 +129,17 @@ public class DownloadOptions
             "Force update of SBI Securities US stock symbols");
 
         var quickModeOption = new Option<bool>(
-            new[] { "-q", "--quick" },
-            "Quick mode: Only download symbols that need updating (default)");
+            "--quick-mode",
+            () => true,
+            "Use quick mode for downloading (skip existing files)");
 
         var forceUpdateOption = new Option<bool>(
-            new[] { "--force", "-F" },
-            "Force update all symbols regardless of cache status");
-            
+            "--force-update",
+            "Force update all data");
+
         var cacheClearOption = new Option<bool>(
-            "--cacheclear",
-            "Clear all cache files before running (use for troubleshooting cache-related issues)");
+            "--cache-clear",
+            "Clear all cache files");
 
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(sp500Option);
@@ -229,35 +230,27 @@ public class DownloadOptions
         Console.WriteLine("  USStockDownloader [options]");
         Console.WriteLine();
         Console.WriteLine("オプション (Options):");
-        Console.WriteLine("  -f, --file <path>       銘柄シンボルファイルのパス (Path to the symbol file)");
-        Console.WriteLine("  --symbols <symbols>     カンマ区切りの銘柄シンボルリスト (Comma-separated list of stock symbols)");
-        Console.WriteLine("  --sp500                 S&P 500の銘柄を使用 (Use S&P 500 symbols)");
-        Console.WriteLine("  --sp500-f               S&P 500の銘柄リストを強制更新 (Force update of S&P 500 symbols)");
-        Console.WriteLine("  -n, --nyd               NYダウの銘柄を使用 (Use NY Dow symbols)");
-        Console.WriteLine("  --nyd-f                 NYダウの銘柄リストを強制更新 (Force update of NY Dow symbols)");
-        Console.WriteLine("  -b, --buffett           バフェットのポートフォリオ銘柄を使用 (Use Buffett's portfolio symbols)");
-        Console.WriteLine("  --buffett-f             バフェットのポートフォリオ銘柄リストを強制更新 (Force update of Buffett's portfolio symbols)");
         Console.WriteLine("  --index                 主要指数を使用 (Use major indices)");
-        Console.WriteLine("  --index-f               主要指数リストを強制更新 (Force update of major indices list)");
+        Console.WriteLine("  --sp500                 S&P 500の銘柄を使用 (Use S&P 500 symbols)");
+        Console.WriteLine("  --nyd               NYダウの銘柄を使用 (Use NY Dow symbols)");
+        Console.WriteLine("  --buffett           バフェットのポートフォリオ銘柄を使用 (Use Buffett's portfolio symbols)");
         Console.WriteLine("  --sbi                   SBI証券取扱いの米国株銘柄を使用 (Use SBI Securities US stock symbols)");
-        Console.WriteLine("  --sbi-f                 SBI証券取扱いの米国株銘柄リストを強制更新 (Force update of SBI Securities US stock symbols)");
-        Console.WriteLine("  -p, --parallel <num>    最大同時ダウンロード数 (Maximum number of concurrent downloads)");
-        Console.WriteLine("  -r, --retries <num>     最大リトライ回数 (Maximum number of retries)");
-        Console.WriteLine("  -d, --delay <ms>        リトライ間隔（ミリ秒） (Retry delay in milliseconds)");
-        Console.WriteLine("  -e, --exponential       リトライに指数バックオフを使用 (Use exponential backoff for retries)");
-        Console.WriteLine("  --start-date <date>     履歴データの開始日 (Start date for historical data)");
-        Console.WriteLine("  --end-date <date>       履歴データの終了日 (End date for historical data)");
-        Console.WriteLine("  -o, --output <dir>      ダウンロードしたデータの出力ディレクトリ (Output directory)");
+        Console.WriteLine("  --file <path>       銘柄シンボルファイルのパス (Path to the symbol file)");
+        Console.WriteLine("  --symbols <symbols>     カンマ区切りの銘柄シンボルリスト (Comma-separated list of stock symbols)");
         Console.WriteLine("  --listcsv <path>        銘柄リストをCSVファイルにエクスポート (Export symbol list to CSV file)");
-        Console.WriteLine("  -q, --quick             クイックモード：更新が必要な銘柄のみをダウンロード (Quick mode: Only download symbols that need updating) [デフォルト]");
-        Console.WriteLine("  --force, -F             強制更新モード：キャッシュの状態に関わらず全銘柄を更新 (Force update all symbols regardless of cache status)");
-        Console.WriteLine("  --cacheclear            実行前にすべてのキャッシュファイルを削除（キャッシュ関連の問題のトラブルシューティングに使用）(Clear all cache files before running)");
-        Console.WriteLine("  -h, --help              このヘルプを表示 (Show this help)");
+        Console.WriteLine("  --output <path>      ダウンロードしたデータの出力ディレクトリ (Output directory)");
+        Console.WriteLine("  --start-date <date>     履歴データの開始日 yyyy-MM-dd形式 (Start date for historical data)");
+        Console.WriteLine("  --end-date <date>       履歴データの終了日 yyyy-MM-dd形式 (End date for historical data)");
+        Console.WriteLine("  --cache-clear           実行前にすべてのキャッシュファイルを削除（キャッシュ関連の問題のトラブルシューティングに使用）(Clear all cache files before running)");
+        Console.WriteLine("  --parallel <num>    最大同時ダウンロード数 (Maximum number of concurrent downloads)");
+        Console.WriteLine("  --retries <num>     最大リトライ回数 (Maximum number of retries)");
+        Console.WriteLine("  --delay <ms>        リトライ間隔（ミリ秒） (Retry delay in milliseconds)");
+        Console.WriteLine("  --exponential       リトライに指数バックオフを使用 (Use exponential backoff for retries)");
         Console.WriteLine();
         Console.WriteLine("例 (Examples):");
-        Console.WriteLine("  USStockDownloader --sp500 -o ./data");
-        Console.WriteLine("  USStockDownloader --symbols AAPL,MSFT,GOOG -o ./data");
-        Console.WriteLine("  USStockDownloader --sp500 --force -o ./data");
-        Console.WriteLine("  USStockDownloader --cacheclear --sp500 -o ./data");
+        Console.WriteLine("  USStockDownloader --sp500 --output ./data");
+        Console.WriteLine("  USStockDownloader --symbols AAPL,MSFT,GOOG --output ./data");
+        Console.WriteLine("  USStockDownloader --sp500 --output ./data");
+        Console.WriteLine("  USStockDownloader --cache-clear --sp500 --output ./data");
     }
 }

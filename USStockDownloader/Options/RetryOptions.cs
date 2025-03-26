@@ -7,6 +7,8 @@ public class RetryOptions
     public bool ExponentialBackoff { get; set; } = true;
     public int RateLimitDelay { get; set; } = 120000;
     public double JitterFactor { get; set; } = 0.2;
+    public System.TimeSpan Delay { get; set; } = System.TimeSpan.FromSeconds(2);
+    public System.TimeSpan Timeout { get; set; } = System.TimeSpan.FromSeconds(30);
 
     public RetryOptions()
     {

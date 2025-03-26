@@ -5,6 +5,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.Extensions.Logging;
 using USStockDownloader.Models;
+using USStockDownloader.Utils;
 
 namespace USStockDownloader.Services;
 
@@ -61,7 +62,7 @@ public class SymbolListExportService
                 Directory.CreateDirectory(outputDirectory);
             }
             
-            _logger.LogInformation("Writing {Count} symbols to {FilePath}", symbols.Count, csvPath);
+            _logger.LogInformation("Writing {Count} symbols to {FilePath}", symbols.Count, PathUtils.ToRelativePath(csvPath));
             
             // Shift-JISエンコーディングでCSVファイルを作成
             using (var writer = new StreamWriter(csvPath, false, Encoding.GetEncoding(932)))
@@ -74,7 +75,7 @@ public class SymbolListExportService
                 using (var csv = new CsvWriter(writer, config))
                 {
                     // ヘッダーを手動で書き込み
-                    csv.WriteField("code");
+                    csv.WriteField("Symbol");
                     csv.WriteField("name");
                     csv.WriteField("market");
                     csv.WriteField("type");
@@ -92,11 +93,11 @@ public class SymbolListExportService
                 }
             }
             
-            _logger.LogInformation("Successfully exported symbol list to {FilePath}", csvPath);
+            _logger.LogInformation("Successfully exported symbol list to {FilePath}", PathUtils.ToRelativePath(csvPath));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to export symbol list to CSV");
+            _logger.LogError("シンボルリストのCSVエクスポートに失敗しました: {ErrorMessage} (Failed to export symbol list to CSV)", ex.Message);
             throw;
         }
     }
@@ -124,7 +125,7 @@ public class SymbolListExportService
                 Directory.CreateDirectory(outputDirectory);
             }
             
-            _logger.LogInformation("Writing {Count} NY Dow symbols to {FilePath}", nydSymbols.Count, csvPath);
+            _logger.LogInformation("Writing {Count} NY Dow symbols to {FilePath}", nydSymbols.Count, PathUtils.ToRelativePath(csvPath));
             
             // 銘柄コードと企業名のマッピング
             var companyNames = new Dictionary<string, string>
@@ -219,7 +220,7 @@ public class SymbolListExportService
                 using (var csv = new CsvWriter(writer, config))
                 {
                     // ヘッダーを手動で書き込み
-                    csv.WriteField("code");
+                    csv.WriteField("Symbol");
                     csv.WriteField("name");
                     csv.WriteField("market");
                     csv.WriteField("type");
@@ -284,11 +285,11 @@ public class SymbolListExportService
                 }
             }
             
-            _logger.LogInformation("Successfully exported NY Dow symbol list to {FilePath}", csvPath);
+            _logger.LogInformation("Successfully exported NY Dow symbol list to {FilePath}", PathUtils.ToRelativePath(csvPath));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to export NY Dow symbol list to CSV");
+            _logger.LogError("NYダウシンボルリストのCSVエクスポートに失敗しました: {ErrorMessage} (Failed to export NY Dow symbol list to CSV)", ex.Message);
             throw;
         }
     }
@@ -317,7 +318,7 @@ public class SymbolListExportService
                 Directory.CreateDirectory(outputDirectory);
             }
             
-            _logger.LogInformation("Writing {Count} indices to {FilePath}", indices.Count, csvPath);
+            _logger.LogInformation("Writing {Count} indices to {FilePath}", indices.Count, PathUtils.ToRelativePath(csvPath));
             
             // Shift-JISエンコーディングでCSVファイルを作成
             using (var writer = new StreamWriter(csvPath, false, Encoding.GetEncoding(932)))
@@ -330,7 +331,7 @@ public class SymbolListExportService
                 using (var csv = new CsvWriter(writer, config))
                 {
                     // ヘッダーを手動で書き込み
-                    csv.WriteField("code");
+                    csv.WriteField("Symbol");
                     csv.WriteField("name");
                     csv.WriteField("market");
                     csv.WriteField("type");
@@ -348,11 +349,11 @@ public class SymbolListExportService
                 }
             }
             
-            _logger.LogInformation("Successfully exported index list to {FilePath}", csvPath);
+            _logger.LogInformation("Successfully exported index list to {FilePath}", PathUtils.ToRelativePath(csvPath));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to export index list to CSV");
+            _logger.LogError("インデックスリストのCSVエクスポートに失敗しました: {ErrorMessage} (Failed to export index list to CSV)", ex.Message);
             throw;
         }
     }
@@ -384,7 +385,7 @@ public class SymbolListExportService
                 Directory.CreateDirectory(outputDirectory);
             }
             
-            _logger.LogInformation("Writing {Count} Buffett portfolio symbols to {FilePath}", buffettSymbols.Count, csvPath);
+            _logger.LogInformation("Writing {Count} Buffett portfolio symbols to {FilePath}", buffettSymbols.Count, PathUtils.ToRelativePath(csvPath));
             
             // 銘柄コードと企業名のマッピング
             var companyNames = new Dictionary<string, string>
@@ -486,7 +487,7 @@ public class SymbolListExportService
                 using (var csv = new CsvWriter(writer, config))
                 {
                     // ヘッダーを手動で書き込み
-                    csv.WriteField("code");
+                    csv.WriteField("Symbol");
                     csv.WriteField("name");
                     csv.WriteField("market");
                     csv.WriteField("type");
@@ -556,11 +557,11 @@ public class SymbolListExportService
                 }
             }
             
-            _logger.LogInformation("Successfully exported Buffett portfolio list to {FilePath}", csvPath);
+            _logger.LogInformation("Successfully exported Buffett portfolio list to {FilePath}", PathUtils.ToRelativePath(csvPath));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to export Buffett portfolio list to CSV");
+            _logger.LogError("バフェットポートフォリオリストのCSVエクスポートに失敗しました: {ErrorMessage} (Failed to export Buffett portfolio list to CSV)", ex.Message);
             throw;
         }
     }
@@ -710,7 +711,7 @@ public class SymbolListExportService
                 Directory.CreateDirectory(outputDirectory);
             }
             
-            _logger.LogInformation("Writing {Count} SBI Securities US stock symbols to {FilePath}", sbiSymbols.Count, csvPath);
+            _logger.LogInformation("Writing {Count} SBI Securities US stock symbols to {FilePath}", sbiSymbols.Count, PathUtils.ToRelativePath(csvPath));
             
             // CSVファイルに出力
             using (var writer = new StreamWriter(csvPath, false, System.Text.Encoding.UTF8))
@@ -723,7 +724,7 @@ public class SymbolListExportService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to export SBI Securities US stock list to CSV");
+            _logger.LogError("SBI証券取扱い米国株リストのCSVエクスポートに失敗しました: {ErrorMessage} (Failed to export SBI Securities US stock list to CSV)", ex.Message);
             throw;
         }
     }

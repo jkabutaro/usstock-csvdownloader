@@ -29,6 +29,9 @@ public class StockData
     [Name("Close")]
     public decimal Close { get; set; }
     
+    [Name("Adj Close")]
+    public decimal AdjClose { get; set; }
+    
     [Name("Volume")]
     public long Volume { get; set; }
 }

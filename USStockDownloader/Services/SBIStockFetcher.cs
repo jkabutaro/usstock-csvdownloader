@@ -143,7 +143,7 @@ namespace USStockDownloader.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "ページへのアクセス中にエラーが発生しました: {Url}", url);
+                        _logger.LogError("ページへのアクセス中にエラーが発生しました: {Url} - {ErrorMessage}", url, ex.Message);
                         throw; // 上位のリトライポリシーでキャッチするために再スロー
                     }
                     
@@ -272,7 +272,8 @@ namespace USStockDownloader.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "SBI証券からの銘柄情報取得中にエラーが発生しました。");
+                _logger.LogError("SBI証券からの銘柄情報取得中にエラーが発生しました: {ErrorMessage}", ex.Message);
+                return new List<StockSymbol>();
             }
             
             return symbols;
@@ -314,8 +315,8 @@ namespace USStockDownloader.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "キャッシュからの読み込み中にエラーが発生しました。");
-                return null;
+                _logger.LogError("キャッシュからの読み込み中にエラーが発生しました: {ErrorMessage}", ex.Message);
+                return new List<StockSymbol>();
             }
         }
         
@@ -343,7 +344,7 @@ namespace USStockDownloader.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "キャッシュへの保存中にエラーが発生しました。");
+                _logger.LogError("キャッシュへの保存中にエラーが発生しました: {ErrorMessage}", ex.Message);
             }
         }
         

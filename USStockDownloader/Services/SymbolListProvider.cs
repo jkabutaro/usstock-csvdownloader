@@ -57,8 +57,8 @@ public class SymbolListProvider
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load symbols from file {File}", symbolFile);
-                throw;
+                _logger.LogError("シンボルファイルの読み込みに失敗しました {File}: {ErrorMessage} (Failed to load symbols from file)", symbolFile, ex.Message);
+                return new List<string>();
             }
         }
 

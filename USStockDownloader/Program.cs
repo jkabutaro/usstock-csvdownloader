@@ -10,7 +10,10 @@ using USStockDownloader.Services.YahooFinance;
 using USStockDownloader.Utils;
 using Serilog;
 using Serilog.Events;
+using System;
 using System.IO;
+using System.Threading.Tasks;
+using USStockDownloader.Interfaces;
 
 namespace USStockDownloader
 {
@@ -102,7 +105,7 @@ namespace USStockDownloader
                     });
                 }
 
-                var serviceProvider = ConfigureServices();
+                var serviceProvider = ConfigureServices(options);
 
                 var logger = serviceProvider.GetService<ILogger<Program>>();
                 var downloadManager = serviceProvider.GetRequiredService<StockDownloadManager>();
@@ -371,7 +374,7 @@ namespace USStockDownloader
             }
         }
 
-        private static IServiceProvider ConfigureServices()
+        private static IServiceProvider ConfigureServices(DownloadOptions options)
         {
             Console.WriteLine("HTTPクライアントを設定しました。 (HTTP client configured.)");
             
@@ -392,8 +395,29 @@ namespace USStockDownloader
             services.AddHttpClient();
             
             // サービスを登録
-            services.AddSingleton<IStockDataService, StockDataService>();
-            services.AddSingleton<StockDownloadManager>();
+            services.AddSingleton<IStockDataService>(provider => 
+            {
+                var httpClient = provider.GetRequiredService<HttpClient>();
+                var logger = provider.GetRequiredService<ILogger<StockDataService>>();
+                var cacheDir = Path.Combine(AppContext.BaseDirectory, "Cache");
+                var retryOptions = new RetryOptions 
+                { 
+                    MaxRetries = 5, 
+                    Delay = TimeSpan.FromSeconds(2),
+                    Timeout = TimeSpan.FromSeconds(30)
+                };
+                return new StockDataService(httpClient, logger, cacheDir, retryOptions);
+            });
+            
+            // コマンドラインから解析したオプションを登録
+            services.AddSingleton(options);
+            
+            services.AddSingleton<StockDownloadManager>(provider => {
+                var stockDataService = provider.GetRequiredService<IStockDataService>();
+                var logger = provider.GetRequiredService<ILogger<StockDownloadManager>>();
+                var downloadOptions = provider.GetRequiredService<DownloadOptions>();
+                return new StockDownloadManager(stockDataService, logger, downloadOptions);
+            });
             services.AddSingleton<IndexSymbolService>();
             services.AddSingleton<SymbolListProvider>();
             services.AddSingleton<SP500CacheService>();
@@ -404,6 +428,10 @@ namespace USStockDownloader
             services.AddSingleton<SymbolListExportService>();
             services.AddSingleton<SBIStockFetcher>();
             services.AddSingleton<YahooFinanceLatestTradingDateService>(); // YahooFinanceLatestTradingDateServiceをDIコンテナに登録
+            
+            // 取引日キャッシュサービスの登録（SQLite版のみを使用）
+            services.AddSingleton<ITradingDayCacheService, TradingDayCacheSqliteService>();
+            Console.WriteLine("SQLite版の取引日キャッシュサービスを使用します。 (Using SQLite trading day cache service.)");
             
             Console.WriteLine("サービスを登録しました。 (Services registered.)");
             

@@ -174,7 +174,8 @@ namespace SBIFetcherTest.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "SBI証券からの銘柄情報取得中にエラーが発生しました");
+                _logger.LogError("SBI証券からの銘柄情報取得中にエラーが発生しました: {ErrorMessage}", ex.Message);
+                return new List<StockSymbol>();
             }
             
             return symbols;

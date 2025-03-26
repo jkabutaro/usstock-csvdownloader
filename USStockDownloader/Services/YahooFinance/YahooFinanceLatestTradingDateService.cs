@@ -64,7 +64,7 @@ namespace USStockDownloader.Services.YahooFinance
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "キャッシュファイルの読み込み中にエラーが発生しました (Error occurred while loading cache file)");
+                _logger.LogError("キャッシュファイルの読み込み中にエラーが発生しました: {ErrorMessage} (Error occurred while loading cache file)", ex.Message);
                 // キャッシュの読み込みに失敗した場合は、キャッシュを使用しない
                 _cachedLatestTradingDate = null;
                 _cacheTime = DateTime.MinValue;
@@ -95,7 +95,7 @@ namespace USStockDownloader.Services.YahooFinance
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "キャッシュファイルの保存中にエラーが発生しました (Error occurred while saving cache file)");
+                _logger.LogError("キャッシュファイルの保存中にエラーが発生しました: {ErrorMessage} (Error occurred while saving cache file)", ex.Message);
                 // キャッシュの保存に失敗しても、処理は続行
             }
         }
@@ -145,21 +145,21 @@ namespace USStockDownloader.Services.YahooFinance
                         // chart プロパティの存在を確認
                         if (!doc.RootElement.TryGetProperty("chart", out var chartElement))
                         {
-                            _logger.LogError("Yahoo Finance APIのレスポンスにchartプロパティがありません (No chart property in Yahoo Finance API response)");
+                            _logger.LogError("Yahoo Finance APIのレスポンスにchartプロパティがありません: {ErrorMessage} (No chart property in Yahoo Finance API response)", "No chart property");
                             return null;
                         }
                         
                         // result プロパティの存在を確認
                         if (!chartElement.TryGetProperty("result", out var resultElement) || resultElement.GetArrayLength() == 0)
                         {
-                            _logger.LogError("Yahoo Finance APIのレスポンスにresultプロパティがないか空です (No result property in Yahoo Finance API response or it's empty)");
+                            _logger.LogError("Yahoo Finance APIのレスポンスにresultプロパティがないか空です: {ErrorMessage} (No result property in Yahoo Finance API response or it's empty)", "No result property");
                             return null;
                         }
                         
                         // timestamp プロパティの存在を確認
                         if (!resultElement[0].TryGetProperty("timestamp", out var timestamps) || timestamps.GetArrayLength() == 0)
                         {
-                            _logger.LogError("Yahoo Finance APIのレスポンスにtimestampプロパティがないか空です (No timestamp property in Yahoo Finance API response or it's empty)");
+                            _logger.LogError("Yahoo Finance APIのレスポンスにtimestampプロパティがないか空です: {ErrorMessage} (No timestamp property in Yahoo Finance API response or it's empty)", "No timestamp property");
                             return null;
                         }
                         
@@ -242,13 +242,13 @@ namespace USStockDownloader.Services.YahooFinance
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "レスポンスの解析中にエラーが発生しました (Error occurred while parsing response)");
+                    _logger.LogError("レスポンスの解析中にエラーが発生しました: {ErrorMessage} (Error occurred while parsing response)", ex.Message);
                     return null;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Yahoo Financeから最新取引日の取得中にエラーが発生しました (Error occurred while getting latest trading date from Yahoo Finance)");
+                _logger.LogError("Yahoo Financeから最新取引日の取得中にエラーが発生しました: {ErrorMessage} (Error occurred while getting latest trading date from Yahoo Finance)", ex.Message);
                 return null;
             }
         }

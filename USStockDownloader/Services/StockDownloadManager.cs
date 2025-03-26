@@ -6,6 +6,7 @@ using USStockDownloader.Models;
 using USStockDownloader.Exceptions;
 using System.IO;
 using USStockDownloader.Utils;
+using USStockDownloader.Options;
 
 namespace USStockDownloader.Services;
 
@@ -14,16 +15,20 @@ public class StockDownloadManager
     private readonly IStockDataService _stockDataService;
     private readonly ILogger<StockDownloadManager> _logger;
     private readonly SemaphoreSlim _semaphore;
-    private const int MAX_CONCURRENT_DOWNLOADS = 3;
     private const int MAX_RETRY_ATTEMPTS = 3;
     private static readonly Random _random = new Random();
     private readonly ConcurrentDictionary<string, string> _failedSymbols = new ConcurrentDictionary<string, string>();
+    private readonly int _maxConcurrentDownloads;
 
-    public StockDownloadManager(IStockDataService stockDataService, ILogger<StockDownloadManager> logger)
+    public StockDownloadManager(IStockDataService stockDataService, ILogger<StockDownloadManager> logger, DownloadOptions options)
     {
         _stockDataService = stockDataService;
         _logger = logger;
-        _semaphore = new SemaphoreSlim(MAX_CONCURRENT_DOWNLOADS);
+        _maxConcurrentDownloads = options.MaxConcurrentDownloads;
+        _semaphore = new SemaphoreSlim(_maxConcurrentDownloads);
+        
+        _logger.LogInformation("並列ダウンロード数を{MaxConcurrent}に設定しました (Set concurrent downloads to {MaxConcurrent})", 
+            _maxConcurrentDownloads, _maxConcurrentDownloads);
     }
 
     public async Task DownloadStockDataAsync(List<string> symbols, string? outputDirectory = null, DateTime? startDate = null, DateTime? endDate = null, bool quickMode = false)
@@ -34,7 +39,7 @@ public class StockDownloadManager
             startDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "", startDate?.Year ?? 0, endDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "", endDate?.Year ?? 0);
 
         // 出力ディレクトリの設定
-        var outputDir = outputDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "StockData");
+        var outputDir = outputDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "output");
         Directory.CreateDirectory(outputDir);
 
         _logger.LogInformation("出力ディレクトリ: {OutputDir} (Output directory)", outputDir);
@@ -75,8 +80,7 @@ public class StockDownloadManager
 
             foreach (var symbol in symbols)
             {
-                // ファイル名に使用できない文字を置換
-                string safeSymbol = symbol.Replace(".", "_");
+                string safeSymbol = symbol;
                 var fileName = Path.Combine(outputDir, $"{safeSymbol}.csv");
                 
                 // ファイルが存在し、更新が不要な場合はスキップ
@@ -118,7 +122,7 @@ public class StockDownloadManager
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "リトライ後も銘柄{Symbol}のダウンロードに失敗しました (Failed to download after retries)", symbol);
+                    _logger.LogError("リトライ後も銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Failed to download after retries)", symbol, ex.Message);
                     failedSymbols.Add(symbol);
                     _failedSymbols.TryAdd(symbol, ex.Message);
                 }
@@ -156,7 +160,7 @@ public class StockDownloadManager
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "特別リトライでも銘柄{Symbol}のダウンロードに失敗しました (Symbol failed even with special retry)", symbol);
+                        _logger.LogError("特別リトライでも銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Symbol failed even with special retry)", symbol, ex.Message);
                         remainingFailedSymbols.Add(symbol);
                     }
                     finally
@@ -217,8 +221,8 @@ public class StockDownloadManager
                 if (retryCount < MAX_RETRY_ATTEMPTS)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, retryCount) + _random.Next(0, 1000) / 1000.0);
-                    _logger.LogWarning(ex, "銘柄{Symbol}のダウンロード中にエラーが発生しました、リトライ {Retry}/{MaxRetry} を{Delay}秒後に実行します (Error downloading, retry after delay)", 
-                        symbol, retryCount, MAX_RETRY_ATTEMPTS, delay.TotalSeconds);
+                    _logger.LogWarning("銘柄{Symbol}のダウンロード中にエラーが発生しました: {ErrorMessage}、リトライ {Retry}/{MaxRetry} を{Delay}秒後に実行します (Error downloading, retry after delay)", 
+                        symbol, ex.Message, retryCount, MAX_RETRY_ATTEMPTS, delay.TotalSeconds);
                     await Task.Delay(delay);
                 }
             }
@@ -227,7 +231,7 @@ public class StockDownloadManager
         // 全てのリトライが失敗
         if (lastException != null)
         {
-            throw new Exception($"{MAX_RETRY_ATTEMPTS}回の試行後も銘柄{symbol}のダウンロードに失敗しました (Failed to download {symbol} after {MAX_RETRY_ATTEMPTS} attempts)", lastException);
+            throw new Exception($"{MAX_RETRY_ATTEMPTS}回の試行後も銘柄{symbol}のダウンロードに失敗しました: {lastException.Message} (Failed to download {symbol} after {MAX_RETRY_ATTEMPTS} attempts)", lastException);
         }
     }
 
@@ -254,13 +258,13 @@ public class StockDownloadManager
                 if (retryCount < SPECIAL_MAX_RETRY)
                 {
                     var delay = TimeSpan.FromSeconds(Math.Pow(2, retryCount + 2) + _random.Next(0, 2000) / 1000.0);
-                    _logger.LogWarning(ex, "銘柄{Symbol}の特別リトライ {Retry}/{MaxRetry} が失敗しました、{Delay}秒待機します (Special retry failed, waiting)", 
-                        symbol, retryCount, SPECIAL_MAX_RETRY, delay.TotalSeconds);
+                    _logger.LogWarning("銘柄{Symbol}の特別リトライ {Retry}/{MaxRetry} が失敗しました: {ErrorMessage}、{Delay}秒待機します (Special retry failed, waiting)", 
+                        symbol, retryCount, SPECIAL_MAX_RETRY, ex.Message, delay.TotalSeconds);
                     await Task.Delay(delay);
                 }
                 else
                 {
-                    _logger.LogError(ex, "銘柄{Symbol}の全ての特別リトライが失敗しました (All special retries failed)", symbol);
+                    _logger.LogError("銘柄{Symbol}の全ての特別リトライが失敗しました: {ErrorMessage} (All special retries failed)", symbol, ex.Message);
                     throw;
                 }
             }
@@ -272,9 +276,8 @@ public class StockDownloadManager
         try
         {
             _logger.LogInformation("銘柄を処理中: {Symbol} (Processing symbol)", symbol);
-            
-            // ファイル名に使用できない文字を置換
-            string safeSymbol = symbol.Replace(".", "_");
+
+            string safeSymbol = symbol;
             
             // CSVファイル名を作成
             var fileName = Path.Combine(outputDir, $"{safeSymbol}.csv");
@@ -285,14 +288,63 @@ public class StockDownloadManager
             bool fileExists = File.Exists(fileName);
 
             // キャッシュが有効でかつファイルが存在する場合のみキャッシュを使用
-            if (!StockDataCache.NeedsUpdate(symbol, startDate, endDate, TimeSpan.FromHours(4)) && fileExists)
+            // キャッシュの有効期限を4時間から12時間に延長
+            if (!StockDataCache.NeedsUpdate(symbol, startDate, endDate, TimeSpan.FromHours(12)) && fileExists)
             {
                 _logger.LogInformation("銘柄{Symbol}のキャッシュデータを使用します (Using cached data)", symbol);
                 return;
             }
 
+            // APIリクエスト用にシンボルを調整（Yahoo FinanceのAPI仕様に合わせる）
+            // ピリオドを含むシンボル（BRK.B、BF.B）はBRK-B、BF-Bとして処理する必要がある
+            string requestSymbol = symbol;
+            //if (symbol.Contains("."))
+            //{
+            //    requestSymbol = symbol.Replace(".", "-");
+            //    _logger.LogDebug("Yahoo Finance API用にシンボルを変換: {OriginalSymbol} -> {RequestSymbol} (Converting symbol for Yahoo Finance API)", 
+            //        symbol, requestSymbol);
+            //}
+
+label_retry:
+
             // キャッシュが無効またはファイルが存在しない場合はダウンロード
-            var stockDataList = await _stockDataService.GetStockDataAsync(symbol, startDate, endDate);
+            var stockDataList = await _stockDataService.GetStockDataAsync(requestSymbol, startDate, endDate);
+
+            // データが取得できない場合は期間を分割して再試行
+            if (!stockDataList.Any() && (endDate - startDate).TotalDays > 30)
+            {
+                _logger.LogWarning("銘柄{Symbol}の全期間データが取得できませんでした。期間を分割して再試行します。 (No data available for full period, retrying with split periods)", symbol);
+                
+                // 期間を半分に分割
+                var midDate = startDate.AddDays((endDate - startDate).TotalDays / 2);
+                
+                try
+                {
+                    // 前半期間のデータを取得
+                    _logger.LogDebug("銘柄{Symbol}の前半期間 {StartDate} - {MidDate} のデータを取得中... (Fetching first half data)", 
+                        symbol, startDate.ToString("yyyy-MM-dd"), midDate.ToString("yyyy-MM-dd"));
+                    var firstHalfData = await _stockDataService.GetStockDataAsync(requestSymbol, startDate, midDate);
+                    
+                    // 後半期間のデータを取得
+                    _logger.LogDebug("銘柄{Symbol}の後半期間 {MidDate} - {EndDate} のデータを取得中... (Fetching second half data)", 
+                        symbol, midDate.AddDays(1).ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+                    var secondHalfData = await _stockDataService.GetStockDataAsync(requestSymbol, midDate.AddDays(1), endDate);
+                    
+                    // データを結合
+                    stockDataList = firstHalfData.Concat(secondHalfData).ToList();
+                    
+                    if (stockDataList.Any())
+                    {
+                        _logger.LogInformation("銘柄{Symbol}のデータを分割取得で成功しました。合計: {Count}件 (Successfully fetched data with split periods)", 
+                            symbol, stockDataList.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError("銘柄{Symbol}の分割取得中にエラーが発生しました: {ErrorMessage} (Error during split fetch)", 
+                        symbol, ex.Message);
+                }
+            }
 
             if (stockDataList.Any())
             {
@@ -310,20 +362,54 @@ public class StockDownloadManager
                 
                 await csv.WriteRecordsAsync(stockDataList);
 
-                _logger.LogInformation("銘柄{Symbol}のデータを正常に保存しました (Successfully saved data)", symbol);
+                _logger.LogInformation("銘柄{Symbol}のデータを正常に保存しました: {Count}件 (Successfully saved data)", 
+                    symbol, stockDataList.Count);
                 
                 // キャッシュを更新（実際のデータリストを渡す）
                 StockDataCache.UpdateCache(symbol, startDate, endDate, stockDataList);
             }
             else
             {
-                _logger.LogWarning("銘柄{Symbol}のデータがありません (No data available)", symbol);
-                throw new DataParsingException($"銘柄{symbol}のデータがありません (No data available for {symbol})");
+                // 上場廃止された銘柄かどうかを確認
+                if (_stockDataService.IsSymbolDelisted(symbol))
+                {
+                    _logger.LogWarning("銘柄{Symbol}は上場廃止されています。処理をスキップします。 (Symbol is delisted. Skipping.)", symbol);
+                    // 空のCSVファイルを作成して、再処理を防止
+                    await File.WriteAllTextAsync(fileName, "Date,Open,High,Low,Close,AdjClose,Volume\n");
+                    return; // 例外をスローせずに処理を終了
+                }
+                else
+                {
+
+                    if (requestSymbol.Contains("."))
+                    {
+                        requestSymbol = requestSymbol.Replace(".", "-");
+                        _logger.LogInformation("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
+                            symbol, requestSymbol);
+
+                        goto label_retry;
+
+                    }
+                    else
+                    {
+                        // API制限や一時的なエラーの可能性がある場合
+                        _logger.LogWarning("銘柄{Symbol}のデータが取得できませんでした。期間: {StartDate} から {EndDate} (No data available)",
+                        symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+                        // データが取得できなかった原因を記録
+                        _failedSymbols[symbol] = $"データなし（期間: {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd}）(No data available)";
+
+                        // 空のCSVファイルを作成して、再処理を防止
+                        await File.WriteAllTextAsync(fileName, "Date,Open,High,Low,Close,AdjClose,Volume\n");
+                        return; // 例外をスローせずに処理を終了
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "銘柄{Symbol}の処理に失敗しました (Failed to process)", symbol);
+            _logger.LogError("銘柄{Symbol}の処理に失敗しました: {ErrorMessage} (Failed to process)", symbol, ex.Message);
+            _failedSymbols[symbol] = ex.Message;
             throw;
         }
     }
@@ -333,14 +419,14 @@ public class StockDownloadManager
         try
         {
             var reportPath = Path.Combine(outputDir, "failed_symbols_report.csv");
-            _logger.LogInformation("失敗した銘柄のレポートを{ReportPath}に作成しています (Creating failed symbols report)", PathUtils.ToRelativePath(reportPath));
+            _logger.LogInformation("失敗した銘柄のレポートを作成しています: {ReportPath} (Creating failed symbols report)", PathUtils.ToRelativePath(reportPath));
             
             await using var writer = new StreamWriter(reportPath);
             await using var csv = new CsvWriter(writer, new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture));
             
             // ヘッダーの書き込み
             csv.WriteField("Symbol");
-            csv.WriteField("Error");
+            csv.WriteField("ErrorMessage");
             csv.NextRecord();
             
             // 失敗した銘柄の詳細を書き込み
@@ -351,11 +437,11 @@ public class StockDownloadManager
                 csv.NextRecord();
             }
             
-            _logger.LogInformation("失敗した銘柄のレポートが正常に作成されました (Failed symbols report created successfully)");
+            _logger.LogInformation("失敗した銘柄のレポートを作成しました: {Count}件 (Created failed symbols report: count)", _failedSymbols.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "失敗した銘柄のレポート作成に失敗しました (Failed to create failed symbols report)");
+            _logger.LogError("失敗した銘柄のレポート作成に失敗しました: {ErrorMessage} (Failed to create failed symbols report)", ex.Message);
         }
     }
 }

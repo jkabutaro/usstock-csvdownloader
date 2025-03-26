@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using USStockDownloader.Models;
 using System.Net.Http;
 using HtmlAgilityPack;
+using USStockDownloader.Utils;
 
 namespace USStockDownloader.Services;
 
@@ -53,7 +54,7 @@ public class SP500CacheService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to load S&P 500 symbols from cache");
+                    _logger.LogWarning("Failed to load S&P 500 symbols from cache {CacheFile}: {ErrorMessage}", PathUtils.ToRelativePath(_cacheFilePath), ex.Message);
                 }
             }
         }
@@ -129,8 +130,8 @@ public class SP500CacheService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch S&P 500 symbols from Wikipedia");
-            throw;
+            _logger.LogError("WikipediaからS&P 500銘柄の取得に失敗しました: {ErrorMessage} (Failed to fetch S&P 500 symbols from Wikipedia)", ex.Message);
+            return new List<StockSymbol>();
         }
     }
 
@@ -184,14 +185,20 @@ public class SP500CacheService
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_cacheFilePath)!);
-            var json = JsonSerializer.Serialize(symbols);
+            // キャッシュディレクトリが存在しない場合は作成
+            var cacheDir = Path.GetDirectoryName(_cacheFilePath);
+            if (!string.IsNullOrEmpty(cacheDir) && !Directory.Exists(cacheDir))
+            {
+                Directory.CreateDirectory(cacheDir);
+            }
+
+            var json = JsonSerializer.Serialize(symbols, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(_cacheFilePath, json);
-            _logger.LogInformation("Saved {Count} S&P 500 symbols to cache", symbols.Count);
+            _logger.LogInformation("Saved {Count} S&P 500 symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(_cacheFilePath));
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to save S&P 500 symbols to cache");
+            _logger.LogError("S&P 500銘柄のキャッシュファイルへの保存に失敗しました: {CacheFile} - {ErrorMessage} (Failed to save S&P 500 symbols to cache file)", PathUtils.ToRelativePath(_cacheFilePath), ex.Message);
         }
     }
 }
