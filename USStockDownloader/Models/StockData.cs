@@ -15,7 +15,8 @@ public class StockData
     public DateTime DateTime { get; set; }
     
     [Ignore]
-    public int DateNumber => DateTime.Year * 10000 + DateTime.Month * 100 + DateTime.Day;
+    //public int DateNumber => DateTime.Year * 10000 + DateTime.Month * 100 + DateTime.Day;
+    public string DateString => DateTime.ToString("yyyy-MM-dd");
 
     [Name("Open")]
     public decimal Open { get; set; }

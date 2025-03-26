@@ -48,12 +48,44 @@ public class SymbolListProvider
             {
                 throw new FileNotFoundException($"Symbol file not found: {symbolFile}");
             }
-
             try
             {
-                var symbols = await File.ReadAllLinesAsync(symbolFile);
-                _logger.LogInformation("Loaded {Count} symbols from file: {File}", symbols.Length, symbolFile);
-                return symbols.ToList();
+                var lines = await File.ReadAllLinesAsync(symbolFile);
+
+                // ヘッダー行かどうかを判定
+                bool hasHeader = false;
+                if (lines.Length > 0)
+                {
+                    var firstRow = lines[0].ToLowerInvariant();
+                    // ヘッダーに含まれることが多い文字列をチェック
+                    string[] headerKeywords = { "name", "symbol", "market", "type", "ticker", "code", "exchange" };
+                    hasHeader = headerKeywords.Any(keyword => firstRow.Contains(keyword));
+
+                    //// 数値判定もバックアップとして使用
+                    //if (!hasHeader)
+                    //{
+                    //    var firstColumn = firstRow.Split(',')[0].Trim();
+                    //    // 最初の列が純粋な数値でない場合もヘッダーと判断
+                    //    hasHeader = !decimal.TryParse(firstColumn, out _);
+                    //}
+                }
+
+                var symbols = lines
+                    .Skip(hasHeader ? 1 : 0) // ヘッダーがある場合は最初の行をスキップ
+                    .Select(line =>
+                    {
+                        var parts = line.Split(',');
+                        return parts.Length > 0 ? parts[0].Trim() : line.Trim();
+                    })
+                    .Where(s => !string.IsNullOrWhiteSpace(s)) // 空の値をフィルタリング
+                    .ToList();
+
+                _logger.LogInformation("Loaded {Count} symbols from file: {File}{HeaderInfo}",
+                    symbols.Count,
+                    symbolFile,
+                    hasHeader ? " (detected and skipped header row)" : "");
+
+                return symbols;
             }
             catch (Exception ex)
             {
@@ -61,6 +93,26 @@ public class SymbolListProvider
                 return new List<string>();
             }
         }
+
+        //if (!string.IsNullOrEmpty(symbolFile))
+        //{
+        //    if (!File.Exists(symbolFile))
+        //    {
+        //        throw new FileNotFoundException($"Symbol file not found: {symbolFile}");
+        //    }
+
+        //    try
+        //    {
+        //        var symbols = await File.ReadAllLinesAsync(symbolFile);
+        //        _logger.LogInformation("Loaded {Count} symbols from file: {File}", symbols.Length, symbolFile);
+        //        return symbols.ToList();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError("シンボルファイルの読み込みに失敗しました {File}: {ErrorMessage} (Failed to load symbols from file)", symbolFile, ex.Message);
+        //        return new List<string>();
+        //    }
+        //}
 
         throw new ArgumentException("No symbol source specified. Use --sp500, --nyd, --buffett, or --file");
     }

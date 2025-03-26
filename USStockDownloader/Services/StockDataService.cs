@@ -519,21 +519,23 @@ label_retry:
 
                     }
 
-
                     _logger.LogError("{Symbol}のTimestampデータがありません (No Timestamp data for symbol)", symbol);
-                    throw new DataParsingException($"No Timestamp data for {symbol}");
+                    //throw new DataParsingException($"No Timestamp data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 if (result.Indicators == null)
                 {
                     _logger.LogError("{Symbol}のIndicatorsデータがありません (No Indicators data for symbol)", symbol);
-                    throw new DataParsingException($"No Indicators data for {symbol}");
+                    //throw new DataParsingException($"No Indicators data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 if (result.Indicators.Quote == null || !result.Indicators.Quote.Any())
                 {
                     _logger.LogError("{Symbol}のQuoteデータがありません (No Quote data for symbol)", symbol);
-                    throw new DataParsingException($"No Quote data for {symbol}");
+                    //throw new DataParsingException($"No Quote data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 var quote = result.Indicators.Quote[0];
@@ -542,31 +544,36 @@ label_retry:
                 if (quote.High == null)
                 {
                     _logger.LogError("{Symbol}の高値データがありません (No High data for symbol)", symbol);
-                    throw new DataParsingException($"No High data for {symbol}");
+                    //throw new DataParsingException($"No High data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 if (quote.Low == null)
                 {
                     _logger.LogError("{Symbol}の安値データがありません (No Low data for symbol)", symbol);
-                    throw new DataParsingException($"No Low data for {symbol}");
+                    //throw new DataParsingException($"No Low data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 if (quote.Open == null)
                 {
                     _logger.LogError("{Symbol}の始値データがありません (No Open data for symbol)", symbol);
-                    throw new DataParsingException($"No Open data for {symbol}");
+                    //throw new DataParsingException($"No Open data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 if (quote.Close == null)
                 {
                     _logger.LogError("{Symbol}の終値データがありません (No Close data for symbol)", symbol);
-                    throw new DataParsingException($"No Close data for {symbol}");
+                    //throw new DataParsingException($"No Close data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 if (quote.Volume == null)
                 {
                     _logger.LogError("{Symbol}の出来高データがありません (No Volume data for symbol)", symbol);
-                    throw new DataParsingException($"No Volume data for {symbol}");
+                    //throw new DataParsingException($"No Volume data for {symbol}");
+                    return new List<StockData>(); // リトライせずに0個の配列返す
                 }
 
                 var stockDataList = new List<StockData>();

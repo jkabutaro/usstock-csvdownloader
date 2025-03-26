@@ -296,14 +296,8 @@ public class StockDownloadManager
             }
 
             // APIリクエスト用にシンボルを調整（Yahoo FinanceのAPI仕様に合わせる）
-            // ピリオドを含むシンボル（BRK.B、BF.B）はBRK-B、BF-Bとして処理する必要がある
+            // ピリオドを含むシンボル（BRK.B、BF.B）はBRK-B、BF-Bとして処理する必要があるケースがある
             string requestSymbol = symbol;
-            //if (symbol.Contains("."))
-            //{
-            //    requestSymbol = symbol.Replace(".", "-");
-            //    _logger.LogDebug("Yahoo Finance API用にシンボルを変換: {OriginalSymbol} -> {RequestSymbol} (Converting symbol for Yahoo Finance API)", 
-            //        symbol, requestSymbol);
-            //}
 
 label_retry:
 

@@ -2,7 +2,7 @@
   "profiles": {
     "USStockDownloader": {
       "commandName": "Project",
-      "commandLineArgs": "--cache-clear --index\r\n"
+      "commandLineArgs": "--file C:\\Users\\tohuchi\\Desktop\\iza_python\\us_index_list.csv\r\n"
     }
   }
 }
