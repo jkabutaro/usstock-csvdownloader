@@ -14,6 +14,10 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using USStockDownloader.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Serilog.Settings.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Collections.Generic;
 
 namespace USStockDownloader
 {
@@ -41,6 +45,22 @@ namespace USStockDownloader
                 // キャッシュディレクトリを初期化
                 // (Initialize cache directory)
                 CacheManager.EnsureCacheDirectoryExists();
+                
+                // ログディレクトリを初期化
+                // (Initialize log directory)
+                try 
+                {
+                    var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+                    if (!Directory.Exists(logDir))
+                    {
+                        Directory.CreateDirectory(logDir);
+                        Console.WriteLine($"ログディレクトリを作成しました: {logDir} (Created log directory)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"ログディレクトリの作成に失敗しました: {ex.Message} (Failed to create log directory)");
+                }
                 
                 // キャッシュをチェック
                 var cache = RuntimeCheckCache.LoadCache();
@@ -293,32 +313,9 @@ namespace USStockDownloader
                         var yahooFinanceLatestTradingDateService = serviceProvider.GetRequiredService<YahooFinanceLatestTradingDateService>();
                         var latestTradingDate = await yahooFinanceLatestTradingDateService.GetLatestTradingDateAsync();
                         
-                        if (latestTradingDate.HasValue)
-                        {
-                            endDate = latestTradingDate.Value.Date;
-                            Console.WriteLine($"Yahoo Financeから取得した最新取引日を使用します: {endDate:yyyy-MM-dd} (Using latest trading date from Yahoo Finance)");
-                        }
-                        else
-                        {
-                            // 取得に失敗した場合はシステム日付を使用（土日の場合は前営業日）
-                            endDate = DateTime.Now.Date;
-                            
-                            // 土日チェック
-                            if (endDate.DayOfWeek == DayOfWeek.Saturday)
-                            {
-                                // 土曜日の場合は金曜日を使用
-                                Console.WriteLine($"システム日付が土曜日です。前営業日を使用します: {endDate:yyyy-MM-dd} → {endDate.AddDays(-1):yyyy-MM-dd} (Using previous business day as system date is Saturday)");
-                                endDate = endDate.AddDays(-1);
-                            }
-                            else if (endDate.DayOfWeek == DayOfWeek.Sunday)
-                            {
-                                // 日曜日の場合は金曜日を使用
-                                Console.WriteLine($"システム日付が日曜日です。前営業日を使用します: {endDate:yyyy-MM-dd} → {endDate.AddDays(-2):yyyy-MM-dd} (Using previous business day as system date is Sunday)");
-                                endDate = endDate.AddDays(-2);
-                            }
-                            
-                            Console.WriteLine($"Yahoo Financeから最新取引日を取得できなかったため、システム日付を使用します: {endDate:yyyy-MM-dd} (Using system date as latest trading date failed to retrieve from Yahoo Finance)");
-                        }
+                        // 最新取引日を使用
+                        endDate = latestTradingDate.Date;
+                        Console.WriteLine($"Yahoo Financeから取得した最新取引日を使用します: {endDate:yyyy-MM-dd} (Using latest trading date from Yahoo Finance)");
                     }
 
                     // 日付範囲の設定：開始日が指定されていない場合は終了日の1年前を使用
@@ -361,13 +358,13 @@ namespace USStockDownloader
             }
             catch (Exception ex)
             {
-                var logger = new LoggerConfiguration()
-                    .MinimumLevel.Debug()
-                    .WriteTo.Console()
-                    .WriteTo.File("error.log", rollingInterval: RollingInterval.Day)
-                    .CreateLogger();
+                //var logger = new LoggerConfiguration()
+                //    .MinimumLevel.Debug()
+                //    .WriteTo.Console()
+                //    .WriteTo.File("error.log", rollingInterval: RollingInterval.Day)
+                //    .CreateLogger();
                 
-                logger.Error(ex, "処理されていない例外が発生しました (An unhandled exception occurred)");
+                //logger.Error(ex, "処理されていない例外が発生しました (An unhandled exception occurred)");
                 Console.WriteLine($"エラーが発生しました: {ex.Message} (An error occurred)");
                 Console.WriteLine("詳細はerror.logを確認してください。 (See error.log for details.)");
                 Environment.ExitCode = 1;
@@ -376,21 +373,64 @@ namespace USStockDownloader
 
         private static IServiceProvider ConfigureServices(DownloadOptions options)
         {
-            Console.WriteLine("HTTPクライアントを設定しました。 (HTTP client configured.)");
+            Console.WriteLine("サービス設定を開始します... (Configuring services...)");
             
             // サービスコレクションを作成
             var services = new ServiceCollection();
-            
-            // ロガーを登録
+
+            // 設定ファイルを読み込む
+            var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            var configuration = new ConfigurationBuilder()
+                .AddJsonFile(configPath, optional: false, reloadOnChange: true)
+                .Build();
+
+            // ロガーを登録 - AppLoggerFactoryの設定を反映
             services.AddLogging(builder =>
             {
-                builder.AddSerilog(new LoggerConfiguration()
+                // 共通LoggerFactoryを使用（AppLoggerFactoryが処理する）
+                // これにより、デバッグログはファイル出力のみとなり、コンソールには出力されない
+                var loggerFactory = AppLoggerFactory.GetLoggerFactory();
+                
+                // Serilogの設定（アプリログ用）
+                // コンソールには警告レベル以上のみ、ファイルには情報レベル以上を出力
+                var logConfig = new LoggerConfiguration()
                     .MinimumLevel.Information()
-                    .WriteTo.Console()
-                    .WriteTo.File("app.log", rollingInterval: RollingInterval.Day)
-                    .CreateLogger());
+                    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Warning);
+
+                try
+                {
+                    string logFilePath = Path.Combine(AppContext.BaseDirectory, "logs", "app_.log");
+                    logConfig = logConfig.WriteTo.File(
+                        logFilePath,
+                        rollingInterval: RollingInterval.Day,
+                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                        restrictedToMinimumLevel: LogEventLevel.Information);
+                    Console.WriteLine($"アプリログファイルパス: {logFilePath} (App log file path)");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"アプリログファイル設定エラー: {ex.Message} (App log file configuration error)");
+                    // コンソールログのみ使用
+                }
+                
+                // 既存のプロバイダーをクリア
+                builder.ClearProviders();
+                
+                // すべての設定が終わった後にロガーを作成
+                var logger = logConfig.CreateLogger();
+                
+                // Serilogプロバイダーを追加
+                builder.AddSerilog(logger, dispose: true);
+                
+                // 既に設定されたAppLoggerFactoryも使用する
+                builder.AddProvider(new LoggerFactoryProvider(loggerFactory));
             });
             
+            // 設定を登録
+            services.AddSingleton<IConfiguration>(configuration);
+
             // HTTPクライアントを登録
             services.AddHttpClient();
             
@@ -427,7 +467,21 @@ namespace USStockDownloader
             services.AddSingleton<IndexListService>();
             services.AddSingleton<SymbolListExportService>();
             services.AddSingleton<SBIStockFetcher>();
-            services.AddSingleton<YahooFinanceLatestTradingDateService>(); // YahooFinanceLatestTradingDateServiceをDIコンテナに登録
+            
+            // SQLiteキャッシュサービスを登録
+            services.AddSingleton<StockDataCacheSqliteService>(provider => {
+                var logger = provider.GetRequiredService<ILogger<StockDataCacheSqliteService>>();
+                var cacheDir = Path.Combine(AppContext.BaseDirectory, "Cache");
+                return new StockDataCacheSqliteService(cacheDir, logger);
+            });
+            
+            // YahooFinanceLatestTradingDateServiceを登録（SQLiteサービスを注入）
+            services.AddSingleton<YahooFinanceLatestTradingDateService>(provider => {
+                var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient();
+                var logger = provider.GetRequiredService<ILogger<YahooFinanceLatestTradingDateService>>();
+                var sqliteService = provider.GetRequiredService<StockDataCacheSqliteService>();
+                return new YahooFinanceLatestTradingDateService(httpClient, logger, sqliteService);
+            });
             
             // 取引日キャッシュサービスの登録（SQLite版のみを使用）
             services.AddSingleton<ITradingDayCacheService, TradingDayCacheSqliteService>();
