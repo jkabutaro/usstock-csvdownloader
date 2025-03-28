@@ -48,7 +48,7 @@ public class SP500CacheService
                     _cachedSymbols = JsonSerializer.Deserialize<List<StockSymbol>>(json);
                     if (_cachedSymbols != null)
                     {
-                        _logger.LogInformation("Loaded {Count} S&P 500 symbols from cache", _cachedSymbols.Count);
+                        _logger.LogDebug("Loaded {Count} S&P 500 symbols from cache", _cachedSymbols.Count);
                         return _cachedSymbols;
                     }
                 }
@@ -72,7 +72,7 @@ public class SP500CacheService
 
     public async Task ForceUpdateAsync()
     {
-        _logger.LogInformation("Forcing update of S&P 500 symbols");
+        _logger.LogDebug("Forcing update of S&P 500 symbols");
         _cachedSymbols = await FetchSP500Symbols();
         await SaveSymbolsToCache(_cachedSymbols);
     }
@@ -125,7 +125,7 @@ public class SP500CacheService
                 }
             }
 
-            _logger.LogInformation("Fetched {Count} S&P 500 symbols from Wikipedia", symbols.Count);
+            _logger.LogDebug("Fetched {Count} S&P 500 symbols from Wikipedia", symbols.Count);
             return symbols;
         }
         catch (Exception ex)
@@ -194,7 +194,7 @@ public class SP500CacheService
 
             var json = JsonSerializer.Serialize(symbols, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(_cacheFilePath, json);
-            _logger.LogInformation("Saved {Count} S&P 500 symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(_cacheFilePath));
+            _logger.LogDebug("Saved {Count} S&P 500 symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(_cacheFilePath));
         }
         catch (Exception ex)
         {

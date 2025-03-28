@@ -44,7 +44,7 @@ namespace USStockDownloader.Services
             //    try
             //    {
             //        File.Delete(_dbPath);
-            //        _logger.LogInformation("既存のデータベースファイルを削除しました: {DbPath} (Deleted existing database file)", _dbPath);
+            //        _logger.LogDebug("既存のデータベースファイルを削除しました: {DbPath} (Deleted existing database file)", _dbPath);
             //    }
             //    catch (Exception ex)
             //    {
@@ -72,6 +72,109 @@ namespace USStockDownloader.Services
         }
         
         /// <summary>
+        /// 年ごとのセマフォを取得します
+        /// </summary>
+        private SemaphoreSlim GetYearSemaphore(int year)
+        {
+            return _yearSemaphores.GetOrAdd(year, _ => new SemaphoreSlim(1, 1));
+        }
+        
+        /// <summary>
+        /// データベースを初期化します
+        /// </summary>
+        private void InitializeDatabase()
+        {
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                connection.Open();
+                
+                // 各年のデータテーブルを作成するための準備
+                // （実際のテーブルは年別に動的に作成される）
+                var years = Enumerable.Range(2000, DateTime.Now.Year - 1999).ToList();
+                
+                using (var transaction = connection.BeginTransaction())
+                {
+                    using var command = connection.CreateCommand();
+                    command.Transaction = transaction;
+                    
+                    // 銘柄リストテーブルの作成
+                    command.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS StockSymbols (
+                            SymbolId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Symbol TEXT NOT NULL UNIQUE
+                        );";
+                    command.ExecuteNonQuery();
+                    
+                    // テーブル情報を保持するメタデータテーブルの作成
+                    command.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS TableMeta (
+                            TableName TEXT PRIMARY KEY,
+                            LastUpdated TEXT NOT NULL
+                        );";
+                    command.ExecuteNonQuery();
+                    
+                    // 「データが存在しない期間」を記録するテーブル
+                    command.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS StockDataNoDataPeriods (
+                            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            SymbolId INTEGER NOT NULL,
+                            StartDate INTEGER NOT NULL,
+                            EndDate INTEGER NOT NULL,
+                            UNIQUE(SymbolId, StartDate, EndDate),
+                            FOREIGN KEY (SymbolId) REFERENCES StockSymbols(SymbolId)
+                        );";
+                    command.ExecuteNonQuery();
+                    
+                    // StockDataCacheInfoテーブルの作成（stock_data_cache.jsonの代替）
+                    command.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS StockDataCacheInfo (
+                            Symbol TEXT PRIMARY KEY,
+                            LastUpdate TEXT NOT NULL,
+                            StartDate TEXT NOT NULL,
+                            EndDate TEXT NOT NULL,
+                            LastTradingDate TEXT NOT NULL
+                        );";
+                    command.ExecuteNonQuery();
+                    
+                    // LatestTradingDateテーブルの作成（latest_trading_date_cache.jsonの代替）
+                    command.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS LatestTradingDates (
+                            Date TEXT PRIMARY KEY,
+                            LastChecked TEXT NOT NULL
+                        );";
+                    command.ExecuteNonQuery();
+                    
+                    // RuntimeCheckテーブルの作成（runtime_check.jsonの代替）
+                    command.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS RuntimeChecks (
+                            Key TEXT PRIMARY KEY,
+                            Value TEXT NOT NULL,
+                            LastUpdated TEXT NOT NULL
+                        );";
+                    command.ExecuteNonQuery();
+                    
+                    // インデックスの作成
+                    command.CommandText = @"
+                        CREATE INDEX IF NOT EXISTS idx_symbol ON StockSymbols(Symbol);
+                        CREATE INDEX IF NOT EXISTS idx_nodata_symbolid ON StockDataNoDataPeriods(SymbolId);
+                        CREATE INDEX IF NOT EXISTS idx_nodata_dates ON StockDataNoDataPeriods(StartDate, EndDate);
+                    ";
+                    command.ExecuteNonQuery();
+                    
+                    transaction.Commit();
+                }
+                
+                _logger.LogDebug("データベースの初期化が完了しました: {DbPath} (Database initialized)", _dbPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "データベースの初期化に失敗しました (Database initialization failed)");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// WALモードを有効化します
         /// </summary>
         private void EnableWalMode()
@@ -95,57 +198,13 @@ namespace USStockDownloader.Services
                 command.CommandText = "PRAGMA synchronous=NORMAL;";
                 command.ExecuteNonQuery();
                 
-                _logger.LogInformation("SQLiteの設定を最適化しました: WALモード={Result}, busy_timeout=30000ms (Optimized SQLite settings: WAL mode={Result}, busy_timeout=30000ms)",
+                _logger.LogDebug("SQLiteの設定を最適化しました: WALモード={Result}, busy_timeout=30000ms (Optimized SQLite settings: WAL mode={Result}, busy_timeout=30000ms)",
                     result, result);
             }
             catch (Exception ex)
             {
-                ExceptionLogger.LogException(_logger, ex, "SQLite設定の最適化中にエラーが発生しました");
+                _logger.LogError(ex, "SQLite設定の最適化中にエラーが発生しました (Error optimizing SQLite settings)");
             }
-        }
-        
-        /// <summary>
-        /// 年ごとのセマフォを取得します
-        /// </summary>
-        private SemaphoreSlim GetYearSemaphore(int year)
-        {
-            return _yearSemaphores.GetOrAdd(year, _ => new SemaphoreSlim(1, 1));
-        }
-
-        /// <summary>
-        /// データベースを初期化します
-        /// </summary>
-        private void InitializeDatabase()
-        {
-            using var connection = new SqliteConnection(_connectionString);
-            connection.Open();
-            
-            using var command = connection.CreateCommand();
-            command.CommandText = @"
-                -- 銘柄マスターテーブル
-                CREATE TABLE IF NOT EXISTS StockSymbols (
-                    SymbolId INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Symbol TEXT UNIQUE NOT NULL
-                );
-                
-                -- データが存在しない期間のテーブル
-                CREATE TABLE IF NOT EXISTS StockDataNoDataPeriods (
-                    SymbolId INTEGER NOT NULL,
-                    StartDate INTEGER NOT NULL,
-                    EndDate INTEGER NOT NULL,
-                    PRIMARY KEY (SymbolId, StartDate, EndDate),
-                    FOREIGN KEY (SymbolId) REFERENCES StockSymbols(SymbolId)
-                );
-                
-                -- インデックス
-                CREATE INDEX IF NOT EXISTS idx_symbol ON StockSymbols(Symbol);
-                CREATE INDEX IF NOT EXISTS idx_nodata_symbolid ON StockDataNoDataPeriods(SymbolId);
-                CREATE INDEX IF NOT EXISTS idx_nodata_dates ON StockDataNoDataPeriods(StartDate, EndDate);
-            ";
-            command.ExecuteNonQuery();
-            
-            _logger.LogInformation("株価データキャッシュデータベースを初期化しました: {DbPath} (Initialized stock data cache database)",
-                _dbPath);
         }
         
         /// <summary>
@@ -195,7 +254,7 @@ namespace USStockDownloader.Services
                     
                     await command.ExecuteNonQueryAsync();
                     
-                    _logger.LogInformation("{Year}年のデータテーブルを作成しました (Created data table for year {Year})",
+                    _logger.LogDebug("{Year}年のデータテーブルを作成しました (Created data table for year {Year})",
                         year, year);
                 });
             }
@@ -246,13 +305,13 @@ namespace USStockDownloader.Services
                     
                     transaction.Commit();
                     
-                    _logger.LogInformation("{Count}年分のデータテーブルを事前作成しました (Pre-created data tables for {Count} years)",
+                    _logger.LogDebug("{Count}年分のデータテーブルを事前作成しました (Pre-created data tables for {Count} years)",
                         years.Count(), years.Count());
                 }
                 catch (Exception ex)
                 {
                     transaction.Rollback();
-                    ExceptionLogger.LogException(_logger, ex, "年テーブルの事前作成中にエラーが発生しました");
+                    _logger.LogError(ex, "年テーブルの事前作成中にエラーが発生しました (Error pre-creating year tables)");
                     throw;
                 }
             }
@@ -265,7 +324,7 @@ namespace USStockDownloader.Services
         /// <summary>
         /// シンボルIDを取得または作成します
         /// </summary>
-        private async Task<int> GetOrCreateSymbolIdAsync(string symbol, SqliteConnection connection, SqliteTransaction transaction = null)
+        private async Task<int> GetOrCreateSymbolIdAsync(string symbol, SqliteConnection connection, SqliteTransaction? transaction = null)
         {
             return await _retryPolicy.ExecuteAsync(async () =>
             {
@@ -282,7 +341,7 @@ namespace USStockDownloader.Services
                 var result = await command.ExecuteScalarAsync();
                 if (result != null && result != DBNull.Value)
                 {
-                    return Convert.ToInt32(result);
+                    return Convert.ToInt32(result); // Unboxingを修正
                 }
                 
                 // シンボルが存在しない場合は作成
@@ -291,7 +350,12 @@ namespace USStockDownloader.Services
                 command.Parameters.AddWithValue("@Symbol", symbol);
                 
                 result = await command.ExecuteScalarAsync();
-                return Convert.ToInt32(result);
+                if (result != null && result != DBNull.Value)
+                {
+                    return Convert.ToInt32(result); // Unboxingを修正
+                }
+                
+                throw new InvalidOperationException($"シンボル {symbol} のIDの作成に失敗しました");
             });
         }
         
@@ -321,7 +385,7 @@ namespace USStockDownloader.Services
         {
             if (dataPoints == null || dataPoints.Count == 0)
             {
-                _logger.LogWarning("{Symbol}の保存対象データがありません (No data to save for {Symbol})",
+                _logger.LogDebug("{Symbol}の保存対象データがありません (No data to save for {Symbol})",
                     symbol, symbol);
                 return;
             }
@@ -413,13 +477,13 @@ namespace USStockDownloader.Services
                         }
                         
                         transaction.Commit();
-                        _logger.LogInformation("{Symbol}の株価データを{Count}件保存しました (Saved {Count} data points for {Symbol})",
+                        _logger.LogDebug("{Symbol}の株価データを{Count}件保存しました (Saved {Count} data points for {Symbol})",
                             symbol, dataPoints.Count, dataPoints.Count, symbol);
                     }
                     catch (Exception ex)
                     {
                         transaction.Rollback();
-                        ExceptionLogger.LogException(_logger, ex, "株価データの保存中にエラーが発生しました");
+                        _logger.LogError(ex, "株価データの保存中にエラーが発生しました (Error saving stock data)");
                         throw;
                     }
                 });
@@ -571,14 +635,14 @@ namespace USStockDownloader.Services
                         await command.ExecuteNonQueryAsync();
                         
                         transaction.Commit();
-                        _logger.LogInformation("{Symbol}のデータなし期間を記録しました: {StartDate}～{EndDate} (Recorded no-data period for {Symbol}: {StartDate} to {EndDate})",
+                        _logger.LogDebug("{Symbol}のデータなし期間を記録しました: {StartDate}～{EndDate} (Recorded no-data period for {Symbol}: {StartDate} to {EndDate})",
                             symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"),
                             symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
                     }
                     catch (Exception ex)
                     {
                         transaction.Rollback();
-                        ExceptionLogger.LogException(_logger, ex, "データなし期間の記録中にエラーが発生しました");
+                        _logger.LogError(ex, "データなし期間の記録中にエラーが発生しました (Error recording no-data period)");
                         throw;
                     }
                 });
@@ -610,7 +674,7 @@ namespace USStockDownloader.Services
                     return false; // シンボルが存在しない場合
                 }
                 
-                int symbolId = Convert.ToInt32(symbolIdResult);
+                int symbolId = Convert.ToInt32(symbolIdResult); // Unboxingを修正
                 int dateInt = DateToInt(date);
                 
                 using var command = connection.CreateCommand();
@@ -623,8 +687,13 @@ namespace USStockDownloader.Services
                 command.Parameters.AddWithValue("@SymbolId", symbolId);
                 command.Parameters.AddWithValue("@Date", dateInt);
                 
-                var count = (long)await command.ExecuteScalarAsync();
-                return count > 0;
+                var countResult = await command.ExecuteScalarAsync();
+                if (countResult != null && countResult != DBNull.Value)
+                {
+                    var count = Convert.ToInt64(countResult); // Unboxingを修正
+                    return count > 0;
+                }
+                return false;
             });
         }
 
@@ -649,7 +718,7 @@ namespace USStockDownloader.Services
                     return false; // シンボルが存在しない場合
                 }
                 
-                int symbolId = Convert.ToInt32(symbolIdResult);
+                int symbolId = Convert.ToInt32(symbolIdResult); // Unboxingを修正
                 
                 // 年テーブルを取得
                 var tableCommand = connection.CreateCommand();
@@ -670,10 +739,14 @@ namespace USStockDownloader.Services
                     dataCommand.CommandText = $"SELECT COUNT(*) FROM {yearTable} WHERE SymbolId = @SymbolId LIMIT 1";
                     dataCommand.Parameters.AddWithValue("@SymbolId", symbolId);
                     
-                    var count = (long)await dataCommand.ExecuteScalarAsync();
-                    if (count > 0)
+                    var countResult = await dataCommand.ExecuteScalarAsync();
+                    if (countResult != null && countResult != DBNull.Value)
                     {
-                        return true;
+                        var count = Convert.ToInt64(countResult); // Unboxingを修正
+                        if (count > 0)
+                        {
+                            return true;
+                        }
                     }
                 }
                 
@@ -681,46 +754,420 @@ namespace USStockDownloader.Services
             });
         }
 
-        ///// <summary>
-        ///// 既存のJSONファイルからデータをインポートします
-        ///// </summary>
-        //public async Task ImportFromJsonFilesAsync(string cacheDirectory)
-        //{
-        //    var jsonFiles = Directory.GetFiles(Path.Combine(cacheDirectory, "output"), "*.json");
-        //    _logger.LogInformation("JSONファイルからのインポートを開始します。対象ファイル数: {Count} (Starting import from JSON files. Target files: {Count})",
-        //        jsonFiles.Length, jsonFiles.Length);
-            
-        //    foreach (var jsonFile in jsonFiles)
-        //    {
-        //        var symbol = Path.GetFileNameWithoutExtension(jsonFile);
+        /// <summary>
+        /// データポイントをデータベースから取得します
+        /// </summary>
+        private async Task<int> GetDataPointCountForYearAsync(int year, int symbolId, SqliteConnection connection)
+        {
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT COUNT(*) FROM StockData_{year} WHERE SymbolId = @SymbolId";
+                command.Parameters.AddWithValue("@SymbolId", symbolId);
                 
-        //        // すでにデータが存在する場合はスキップ
-        //        if (await HasDataForSymbolAsync(symbol))
-        //        {
-        //            _logger.LogInformation("{Symbol}のデータはすでに存在します。スキップします。(Data for {Symbol} already exists. Skipping.)",
-        //                symbol, symbol);
-        //            continue;
-        //        }
+                var result = await command.ExecuteScalarAsync();
+                if (result != null && result != DBNull.Value)
+                {
+                    return Convert.ToInt32(result); // Unboxingを修正
+                }
                 
-        //        try
-        //        {
-        //            var json = await File.ReadAllTextAsync(jsonFile);
-        //            var stockData = System.Text.Json.JsonSerializer.Deserialize<List<StockDataPoint>>(json);
+                return 0;
+            }
+            catch (SqliteException ex) when (ex.Message.Contains("no such table"))
+            {
+                // テーブルが存在しない場合は0件と見なす
+                return 0;
+            }
+        }
+        
+        /// <summary>
+        /// テーブルが空かどうかを確認し、必要に応じて削除します
+        /// </summary>
+        private async Task CleanupEmptyTableAsync(string tableName)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
                     
-        //            if (stockData != null && stockData.Count > 0)
-        //            {
-        //                await SaveStockDataAsync(symbol, stockData);
-        //                _logger.LogInformation("{Symbol}のデータを{Count}件インポートしました (Imported {Count} data points for {Symbol})",
-        //                    symbol, stockData.Count, stockData.Count, symbol);
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            ExceptionLogger.LogException(_logger, ex, "JSONファイルからのインポート中にエラーが発生しました");
-        //        }
-        //    }
+                    using var countCommand = connection.CreateCommand();
+                    countCommand.CommandText = $"SELECT COUNT(*) FROM {tableName}";
+                    
+                    var countResult = await countCommand.ExecuteScalarAsync();
+                    if (countResult != null && countResult != DBNull.Value)
+                    {
+                        var count = Convert.ToInt32(countResult); // Unboxingを修正
+                        
+                        if (count == 0)
+                        {
+                            // テーブルが空なら削除
+                            using var dropCommand = connection.CreateCommand();
+                            dropCommand.CommandText = $"DROP TABLE {tableName}";
+                            await dropCommand.ExecuteNonQueryAsync();
+                            
+                            _logger.LogDebug("空のテーブルを削除しました: {TableName} (Dropped empty table)", tableName);
+                        }
+                    }
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+
+        #region StockDataCacheInfo Methods
+
+        /// <summary>
+        /// StockDataCacheInfoをデータベースから取得します
+        /// </summary>
+        public async Task<Dictionary<string, StockDataCacheInfo>> GetStockDataCacheInfoAsync()
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    var result = new Dictionary<string, StockDataCacheInfo>();
+                    
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = @"
+                        SELECT Symbol, LastUpdate, StartDate, EndDate, LastTradingDate
+                        FROM StockDataCacheInfo";
+                    
+                    using var reader = await command.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var symbol = reader.GetString(0);
+                        var info = new StockDataCacheInfo
+                        {
+                            Symbol = symbol,
+                            LastUpdate = DateTime.Parse(reader.GetString(1)),
+                            StartDate = DateTime.Parse(reader.GetString(2)),
+                            EndDate = DateTime.Parse(reader.GetString(3)),
+                            LastTradingDate = DateTime.Parse(reader.GetString(4))
+                        };
+                        
+                        result[symbol] = info;
+                    }
+                    
+                    return result;
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        /// <summary>
+        /// StockDataCacheInfoをデータベースに保存または更新します
+        /// </summary>
+        public async Task SaveStockDataCacheInfoAsync(Dictionary<string, StockDataCacheInfo> cacheInfo)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var transaction = connection.BeginTransaction();
+                    
+                    // 既存データをクリア
+                    using (var clearCommand = connection.CreateCommand())
+                    {
+                        clearCommand.Transaction = transaction;
+                        clearCommand.CommandText = "DELETE FROM StockDataCacheInfo";
+                        await clearCommand.ExecuteNonQueryAsync();
+                    }
+                    
+                    // 新しいデータを挿入
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.Transaction = transaction;
+                        command.CommandText = @"
+                            INSERT INTO StockDataCacheInfo (Symbol, LastUpdate, StartDate, EndDate, LastTradingDate)
+                            VALUES (@Symbol, @LastUpdate, @StartDate, @EndDate, @LastTradingDate)
+                        ";
+                        
+                        var symbolParam = command.CreateParameter();
+                        symbolParam.ParameterName = "@Symbol";
+                        command.Parameters.Add(symbolParam);
+                        
+                        var lastUpdateParam = command.CreateParameter();
+                        lastUpdateParam.ParameterName = "@LastUpdate";
+                        command.Parameters.Add(lastUpdateParam);
+                        
+                        var startDateParam = command.CreateParameter();
+                        startDateParam.ParameterName = "@StartDate";
+                        command.Parameters.Add(startDateParam);
+                        
+                        var endDateParam = command.CreateParameter();
+                        endDateParam.ParameterName = "@EndDate";
+                        command.Parameters.Add(endDateParam);
+                        
+                        var lastTradingDateParam = command.CreateParameter();
+                        lastTradingDateParam.ParameterName = "@LastTradingDate";
+                        command.Parameters.Add(lastTradingDateParam);
+                        
+                        foreach (var entry in cacheInfo)
+                        {
+                            symbolParam.Value = entry.Key;
+                            lastUpdateParam.Value = entry.Value.LastUpdate.ToString("o");
+                            startDateParam.Value = entry.Value.StartDate.ToString("o");
+                            endDateParam.Value = entry.Value.EndDate.ToString("o");
+                            lastTradingDateParam.Value = entry.Value.LastTradingDate.ToString("o");
+                            
+                            await command.ExecuteNonQueryAsync();
+                        }
+                    }
+                    
+                    transaction.Commit();
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        /// <summary>
+        /// 特定の銘柄のStockDataCacheInfoを更新します
+        /// </summary>
+        public async Task UpdateStockDataCacheInfoAsync(string symbol, StockDataCacheInfo info)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = @"
+                        INSERT OR REPLACE INTO StockDataCacheInfo (Symbol, LastUpdate, StartDate, EndDate, LastTradingDate)
+                        VALUES (@Symbol, @LastUpdate, @StartDate, @EndDate, @LastTradingDate)
+                    ";
+                    
+                    command.Parameters.AddWithValue("@Symbol", symbol);
+                    command.Parameters.AddWithValue("@LastUpdate", info.LastUpdate.ToString("o"));
+                    command.Parameters.AddWithValue("@StartDate", info.StartDate.ToString("o"));
+                    command.Parameters.AddWithValue("@EndDate", info.EndDate.ToString("o"));
+                    command.Parameters.AddWithValue("@LastTradingDate", info.LastTradingDate.ToString("o"));
+                    
+                    await command.ExecuteNonQueryAsync();
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        /// <summary>
+        /// 特定の銘柄のStockDataCacheInfoを削除します
+        /// </summary>
+        public async Task RemoveStockDataCacheInfoAsync(string symbol)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "DELETE FROM StockDataCacheInfo WHERE Symbol = @Symbol";
+                    command.Parameters.AddWithValue("@Symbol", symbol);
+                    
+                    await command.ExecuteNonQueryAsync();
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        #endregion
+        
+        #region LatestTradingDate Methods
+        
+        /// <summary>
+        /// 最新の取引日情報を取得します
+        /// </summary>
+        public async Task<DateTime?> GetLatestTradingDateAsync(DateTime date)
+        {
+            DateTime? result = null;
             
-        //    _logger.LogInformation("JSONファイルからのインポートが完了しました (Import from JSON files completed)");
-        //}
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "SELECT Date FROM LatestTradingDates WHERE Date = @Date";
+                    command.Parameters.AddWithValue("@Date", date.Date.ToString("yyyy-MM-dd"));
+                    
+                    var queryResult = await command.ExecuteScalarAsync();
+                    
+                    if (queryResult != null && queryResult != DBNull.Value)
+                    {
+                        var dateStr = queryResult.ToString() ?? string.Empty;
+                        if (!string.IsNullOrEmpty(dateStr))
+                        {
+                            result = DateTime.Parse(dateStr);
+                        }
+                    }
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// 最新の取引日情報を保存します
+        /// </summary>
+        public async Task SaveLatestTradingDateAsync(DateTime date)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = @"
+                        INSERT OR REPLACE INTO LatestTradingDates (Date, LastChecked)
+                        VALUES (@Date, @LastChecked)";
+                    
+                    command.Parameters.AddWithValue("@Date", date.Date.ToString("yyyy-MM-dd"));
+                    command.Parameters.AddWithValue("@LastChecked", DateTime.Now.ToString("o"));
+                    
+                    await command.ExecuteNonQueryAsync();
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        #endregion
+        
+        #region RuntimeCheck Methods
+        
+        /// <summary>
+        /// ランタイムチェック情報を取得します
+        /// </summary>
+        public async Task<Dictionary<string, string>> GetRuntimeChecksAsync()
+        {
+            return await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    var result = new Dictionary<string, string>();
+                    
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "SELECT Key, Value FROM RuntimeChecks";
+                    
+                    using var reader = await command.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var key = reader.GetString(0);
+                        var value = reader.GetString(1);
+                        result[key] = value;
+                    }
+                    
+                    return result;
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        /// <summary>
+        /// ランタイムチェック情報を保存します
+        /// </summary>
+        public async Task SaveRuntimeCheckAsync(string key, string value)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = @"
+                        INSERT OR REPLACE INTO RuntimeChecks (Key, Value, LastUpdated)
+                        VALUES (@Key, @Value, @LastUpdated)";
+                    
+                    command.Parameters.AddWithValue("@Key", key);
+                    command.Parameters.AddWithValue("@Value", value);
+                    command.Parameters.AddWithValue("@LastUpdated", DateTime.Now.ToString("o"));
+                    
+                    await command.ExecuteNonQueryAsync();
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        /// <summary>
+        /// ランタイムチェック情報を削除します
+        /// </summary>
+        public async Task RemoveRuntimeCheckAsync(string key)
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await _dbSemaphore.WaitAsync();
+                try
+                {
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "DELETE FROM RuntimeChecks WHERE Key = @Key";
+                    command.Parameters.AddWithValue("@Key", key);
+                    
+                    await command.ExecuteNonQueryAsync();
+                }
+                finally
+                {
+                    _dbSemaphore.Release();
+                }
+            });
+        }
+        
+        #endregion
     }
 }

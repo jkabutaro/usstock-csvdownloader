@@ -24,21 +24,21 @@ public class SymbolListProvider
         if (useSP500)
         {
             var symbols = await _indexSymbolService.GetSP500Symbols();
-            _logger.LogInformation("Loaded {Count} S&P 500 symbols", symbols.Count);
+            _logger.LogDebug("Loaded {Count} S&P 500 symbols", symbols.Count);
             return symbols;
         }
         
         if (useNYD)
         {
             var symbols = await _indexSymbolService.GetNYDSymbols();
-            _logger.LogInformation("Loaded {Count} NY Dow symbols", symbols.Count);
+            _logger.LogDebug("Loaded {Count} NY Dow symbols", symbols.Count);
             return symbols;
         }
 
         if (useBuffett)
         {
             var symbols = await _indexSymbolService.GetBuffettSymbols();
-            _logger.LogInformation("Loaded {Count} Buffett portfolio symbols", symbols.Count);
+            _logger.LogDebug("Loaded {Count} Buffett portfolio symbols", symbols.Count);
             return symbols;
         }
 
@@ -80,7 +80,7 @@ public class SymbolListProvider
                     .Where(s => !string.IsNullOrWhiteSpace(s)) // 空の値をフィルタリング
                     .ToList();
 
-                _logger.LogInformation("Loaded {Count} symbols from file: {File}{HeaderInfo}",
+                _logger.LogDebug("Loaded {Count} symbols from file: {File}{HeaderInfo}",
                     symbols.Count,
                     symbolFile,
                     hasHeader ? " (detected and skipped header row)" : "");
@@ -104,7 +104,7 @@ public class SymbolListProvider
         //    try
         //    {
         //        var symbols = await File.ReadAllLinesAsync(symbolFile);
-        //        _logger.LogInformation("Loaded {Count} symbols from file: {File}", symbols.Length, symbolFile);
+        //        _logger.LogDebug("Loaded {Count} symbols from file: {File}", symbols.Length, symbolFile);
         //        return symbols.ToList();
         //    }
         //    catch (Exception ex)

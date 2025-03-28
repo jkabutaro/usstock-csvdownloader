@@ -57,7 +57,7 @@ namespace USStockDownloader.Services
             var cachedSymbols = await LoadFromCacheAsync();
             if (cachedSymbols != null && cachedSymbols.Count > 0)
             {
-                _logger.LogInformation($"キャッシュから{cachedSymbols.Count}件の銘柄情報を読み込みました。");
+                _logger.LogDebug($"キャッシュから{cachedSymbols.Count}件の銘柄情報を読み込みました。");
                 return cachedSymbols;
             }
             
@@ -71,7 +71,7 @@ namespace USStockDownloader.Services
         /// <returns>取得した銘柄情報のリスト</returns>
         public async Task<List<StockSymbol>> ForceUpdateAsync()
         {
-            _logger.LogInformation("SBI証券の銘柄情報を強制的に更新します...");
+            _logger.LogDebug("SBI証券の銘柄情報を強制的に更新します...");
             return await FetchAndCacheSymbolsAsync();
         }
         
@@ -88,7 +88,7 @@ namespace USStockDownloader.Services
                 // リトライポリシーを適用
                 symbols = await _retryPolicy.ExecuteAsync(async () =>
                 {
-                    _logger.LogInformation("SBI証券から普通株式一覧を取得します...");
+                    _logger.LogDebug("SBI証券から普通株式一覧を取得します...");
                     
                     // Puppeteerをインストール（既存のChromiumがあれば再利用）
                     var browserFetcher = new BrowserFetcher();
@@ -124,11 +124,11 @@ namespace USStockDownloader.Services
                     // await page.SetDefaultNavigationTimeoutAsync(90000); // 90秒
                     // await page.SetDefaultTimeoutAsync(90000); // 90秒
                     
-                    _logger.LogInformation("SBI証券の米国株式一覧ページにアクセスします...");
+                    _logger.LogDebug("SBI証券の米国株式一覧ページにアクセスします...");
                     
                     // SBI証券の米国株式一覧ページにアクセス
                     string url = "https://search.sbisec.co.jp/v2/popwin/info/stock/pop6040_usequity_list.html";
-                    _logger.LogInformation("SBI証券の米国株式一覧ページにアクセスします: {Url}", url);
+                    _logger.LogDebug("SBI証券の米国株式一覧ページにアクセスします: {Url}", url);
                     
                     try
                     {
@@ -139,7 +139,7 @@ namespace USStockDownloader.Services
                                 WaitUntil = new[] { WaitUntilNavigation.Load } // Networkidle0ではなくLoadに変更
                             });
                         
-                        _logger.LogInformation("ページへのアクセスに成功しました。テーブルの読み込みを待機します...");
+                        _logger.LogDebug("ページへのアクセスに成功しました。テーブルの読み込みを待機します...");
                     }
                     catch (Exception ex)
                     {
@@ -151,7 +151,7 @@ namespace USStockDownloader.Services
                     await page.WaitForSelectorAsync("table#DataTables_Table_0", new WaitForSelectorOptions { Timeout = 30000 });
                     
                     // 「全件」表示オプションを選択するJavaScriptを実行
-                    _logger.LogInformation("「全件」表示オプションを選択します...");
+                    _logger.LogDebug("「全件」表示オプションを選択します...");
                     
                     var result = await page.EvaluateExpressionAsync<bool>(@"
                         (() => {
@@ -184,7 +184,7 @@ namespace USStockDownloader.Services
                         return symbols;
                     }
                     
-                    _logger.LogInformation("「全件」表示オプションを選択しました。データが読み込まれるまで待機します...");
+                    _logger.LogDebug("「全件」表示オプションを選択しました。データが読み込まれるまで待機します...");
                     
                     // データが読み込まれるまで待機（最大10秒）
                     await Task.Delay(10000);
@@ -194,7 +194,7 @@ namespace USStockDownloader.Services
                         document.querySelectorAll('table#DataTables_Table_0 tbody tr').length
                     ");
                     
-                    _logger.LogInformation("テーブルの行数: {RowCount}", rowCount);
+                    _logger.LogDebug("テーブルの行数: {RowCount}", rowCount);
                     
                     if (rowCount == 0)
                     {
@@ -215,7 +215,7 @@ namespace USStockDownloader.Services
                     var rows = htmlDoc.DocumentNode.SelectNodes("//tbody/tr");
                     if (rows != null)
                     {
-                        _logger.LogInformation("{Count}行のデータを処理します...", rows.Count);
+                        _logger.LogDebug("{Count}行のデータを処理します...", rows.Count);
                         
                         foreach (var row in rows)
                         {
@@ -258,11 +258,11 @@ namespace USStockDownloader.Services
                         }
                     }
                     
-                    _logger.LogInformation("SBI証券から{Count}銘柄の情報を取得しました", symbols.Count);
+                    _logger.LogDebug("SBI証券から{Count}銘柄の情報を取得しました", symbols.Count);
                     
                     // スクリーンショットを保存（デバッグ用）
                     await page.ScreenshotAsync("sbi_screenshot.png");
-                    _logger.LogInformation("スクリーンショットを保存しました: sbi_screenshot.png");
+                    _logger.LogDebug("スクリーンショットを保存しました: sbi_screenshot.png");
                     
                     // 取得したデータをキャッシュに保存
                     await SaveToCacheAsync(symbols);
@@ -289,7 +289,7 @@ namespace USStockDownloader.Services
             {
                 if (!File.Exists(_cacheFilePath))
                 {
-                    _logger.LogInformation("キャッシュファイルが存在しません。");
+                    _logger.LogDebug("キャッシュファイルが存在しません。");
                     return null;
                 }
                 
@@ -297,7 +297,7 @@ namespace USStockDownloader.Services
                 var fileInfo = new FileInfo(_cacheFilePath);
                 if (DateTime.Now - fileInfo.LastWriteTime > _cacheExpiration)
                 {
-                    _logger.LogInformation("キャッシュの有効期限が切れています。");
+                    _logger.LogDebug("キャッシュの有効期限が切れています。");
                     return null;
                 }
                 
@@ -340,7 +340,7 @@ namespace USStockDownloader.Services
                 });
                 
                 await File.WriteAllTextAsync(_cacheFilePath, json);
-                _logger.LogInformation($"{symbols.Count}件の銘柄情報をキャッシュに保存しました。");
+                _logger.LogDebug($"{symbols.Count}件の銘柄情報をキャッシュに保存しました。");
             }
             catch (Exception ex)
             {

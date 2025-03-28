@@ -29,6 +29,7 @@ public class StockDataService : IStockDataService
     private readonly StockDataCacheSqliteService _stockDataCache;
     private readonly ITradingDayCacheService _tradingDayCache;
     private readonly AsyncRetryPolicy<List<StockData>> _retryPolicy;
+    private readonly RetryOptions _retryOptions;
 
     // 上場廃止された銘柄を追跡するためのセット
     private readonly HashSet<string> _delistedSymbols = new HashSet<string>();
@@ -69,15 +70,12 @@ public class StockDataService : IStockDataService
         _httpClient = httpClient;
         _logger = logger;
         _cacheDirPath = cacheDirectory;
+        _retryOptions = retryOptions;
         
-        // SQLiteキャッシュサービスの初期化
-        var loggerFactory = LoggerFactory.Create(builder => {
-            builder.AddConsole();
-            builder.SetMinimumLevel(LogLevel.Debug);
-        });
+        // SQLiteキャッシュサービスの初期化 - 共通LoggerFactoryを使用
         _stockDataCache = new StockDataCacheSqliteService(
             cacheDirectory, 
-            loggerFactory.CreateLogger<StockDataCacheSqliteService>());
+            AppLoggerFactory.CreateLogger<StockDataCacheSqliteService>());
             
         // HttpClientFactoryの作成
         var services = new ServiceCollection();
@@ -92,7 +90,7 @@ public class StockDataService : IStockDataService
         var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
             
         _tradingDayCache = new TradingDayCacheSqliteService(
-            loggerFactory.CreateLogger<TradingDayCacheSqliteService>(),
+            AppLoggerFactory.CreateLogger<TradingDayCacheSqliteService>(),
             new HttpClientFactoryWrapper(_httpClient));
 
         // リトライポリシーの設定
@@ -100,17 +98,23 @@ public class StockDataService : IStockDataService
             .Handle<HttpRequestException>()
             .Or<DataParsingException>()
             .WaitAndRetryAsync(
-                3, // 最大リトライ回数
+                retryOptions.MaxRetries, // 最大リトライ回数
                 retryAttempt =>
                     TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + // 指数バックオフ
-                    TimeSpan.FromMilliseconds(_random.Next(0, 1000)) // ジッター
+                    TimeSpan.FromMilliseconds(_random.Next(0, 1000)), // ジッター
+                onRetry: (outcome, timeSpan, retryCount, context) =>
+                {
+                    string symbol = context.ContainsKey("Symbol") ? context["Symbol"].ToString() ?? "Unknown" : "Unknown";
+                    _logger.LogWarning("株価データ取得リトライ {RetryCount}/{MaxRetry}: シンボル {Symbol}, 例外: {Exception} (Retrying stock data fetch)",
+                        retryCount, retryOptions.MaxRetries, symbol, outcome.Exception?.Message);
+                }
             );
 
         // キャッシュディレクトリのパスを設定
         if (!Directory.Exists(_cacheDirPath))
         {
             Directory.CreateDirectory(_cacheDirPath);
-            _logger.LogInformation("キャッシュディレクトリを作成しました (Created cache directory): {CacheDir}", _cacheDirPath);
+            _logger.LogDebug("キャッシュディレクトリを作成しました (Created cache directory): {CacheDir}", _cacheDirPath);
         }
         
         //// 既存のJSONファイルからデータをインポート（初回のみ）
@@ -125,7 +129,7 @@ public class StockDataService : IStockDataService
     //    var stockDataDir = Path.Combine(_cacheDirPath, "output");
     //    if (Directory.Exists(stockDataDir) && Directory.GetFiles(stockDataDir, "*.json").Length > 0)
     //    {
-    //        _logger.LogInformation("既存のJSONファイルからSQLiteデータベースへの移行を開始します (Starting migration from JSON files to SQLite database)");
+    //        _logger.LogDebug("既存のJSONファイルからSQLiteデータベースへの移行を開始します (Starting migration from JSON files to SQLite database)");
     //        await _stockDataCache.ImportFromJsonFilesAsync(_cacheDirPath);
     //    }
     //}
@@ -141,7 +145,7 @@ public class StockDataService : IStockDataService
         // データが存在しない期間のチェック
         if (IsInNoDataPeriod(symbol, startDate, endDate))
         {
-            _logger.LogInformation($"シンボル {symbol} の期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} はデータが存在しないことが既知です (No data exists for symbol {symbol} from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd})");
+            _logger.LogDebug($"シンボル {symbol} の期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} はデータが存在しないことが既知です (No data exists for symbol {symbol} from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd})");
             return new List<StockData>();
         }
 
@@ -152,7 +156,7 @@ public class StockDataService : IStockDataService
             int count = stockDataPoints.Count();
             if (count > 0)
             {
-                _logger.LogInformation($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)");
+                _logger.LogDebug($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)");
                 
                 // StockDataPointからStockDataへの変換
                 var stockData = stockDataPoints.Select(p => new StockData
@@ -226,7 +230,7 @@ public class StockDataService : IStockDataService
             // 取引日があるか確認
             if (!await CheckTradingDayRangeAsync(newStartDate, newEndDate))
             {
-                _logger.LogInformation($"シンボル {symbol} の期間 {newStartDate:yyyy-MM-dd} から {newEndDate:yyyy-MM-dd} に取引日がありません (No trading days for symbol {symbol} from {newStartDate:yyyy-MM-dd} to {newEndDate:yyyy-MM-dd})");
+                _logger.LogDebug($"シンボル {symbol} の期間 {newStartDate:yyyy-MM-dd} から {newEndDate:yyyy-MM-dd} に取引日がありません (No trading days for symbol {symbol} from {newStartDate:yyyy-MM-dd} to {newEndDate:yyyy-MM-dd})");
                 
                 // データが存在しない期間として記録（SQLiteとメモリの両方）
                 await _stockDataCache.RecordNoDataPeriodAsync(symbol, newStartDate, newEndDate);
@@ -314,14 +318,14 @@ public class StockDataService : IStockDataService
             // TradingDayCacheServiceが利用可能な場合はそれを使用
             if (_tradingDayCache != null)
             {
-                _logger.LogInformation("TradingDayCacheServiceを使用して営業日をチェックしています: {StartDate}から{EndDate}まで (Checking trading days using cache service)",
+                _logger.LogDebug("TradingDayCacheServiceを使用して営業日をチェックしています: {StartDate}から{EndDate}まで (Checking trading days using cache service)",
                     startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
                 
                 return await _tradingDayCache.CheckTradingDayRangeAsync(startDate, endDate);
             }
             
             // キャッシュサービスが利用できない場合は直接APIを呼び出す
-            _logger.LogInformation("NYダウのデータを取得して営業日かどうかを判断しています: {StartDate}から{EndDate}まで (Checking if date range contains trading days using DJI)",
+            _logger.LogDebug("NYダウのデータを取得して営業日かどうかを判断しています: {StartDate}から{EndDate}まで (Checking if date range contains trading days using DJI)",
                 startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
             
             var djiData = await FetchStockDataWithoutRetryAsync("^DJI", startDate, endDate);
@@ -347,17 +351,17 @@ public class StockDataService : IStockDataService
                 startDate = startDate.Date;
                 endDate = endDate.Date;
 
-                _logger.LogInformation("{Symbol}のデータを取得しています: {StartDate}から{EndDate}まで (Fetching data for symbol)",
+                _logger.LogDebug("{Symbol}のデータを取得しています: {StartDate}から{EndDate}まで (Fetching data for symbol)",
                     symbol,
                     startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
-                _logger.LogInformation("【日付追跡】StockDataService - FetchStockDataAsync開始 - startDate: {StartDate}, Year: {Year}, endDate: {EndDate}, Year: {Year} (Date tracking)",
+                _logger.LogDebug("【日付追跡】StockDataService - FetchStockDataAsync開始 - startDate: {StartDate}, Year: {Year}, endDate: {EndDate}, Year: {Year} (Date tracking)",
                     startDate.ToString("yyyy-MM-dd HH:mm:ss"), startDate.Year, endDate.ToString("yyyy-MM-dd HH:mm:ss"), endDate.Year);
 
                 // ETRシンボルの特別処理
                 if (symbol == "ETR")
                 {
-                    _logger.LogInformation("ETRシンボルの特別処理を適用します (Special handling for ETR symbol)");
+                    _logger.LogDebug("ETRシンボルの特別処理を適用します (Special handling for ETR symbol)");
 
                     // ETRはEntergy Corporation、Yahoo FinanceでもETRのまま使用
                     // 追加の待機時間を設定（レート制限回避のため）
@@ -387,13 +391,13 @@ public class StockDataService : IStockDataService
                 var unixStartTime = new DateTimeOffset(startDateEST, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
                 var unixEndTime = new DateTimeOffset(endDateEST, TimeSpan.FromHours(-5)).ToUnixTimeSeconds();
 
-                _logger.LogInformation("【日付追跡】StockDataService - Unix変換後 - startDate: {StartDate}, unixStartTime: {UnixStart}, endDate: {EndDate}, unixEndTime: {UnixEnd} (Date tracking after Unix conversion)",
+                _logger.LogDebug("【日付追跡】StockDataService - Unix変換後 - startDate: {StartDate}, unixStartTime: {UnixStart}, endDate: {EndDate}, unixEndTime: {UnixEnd} (Date tracking after Unix conversion)",
                     startDateEST.ToString("yyyy-MM-dd HH:mm:ss"), unixStartTime, endDateEST.ToString("yyyy-MM-dd HH:mm:ss"), unixEndTime);
 
                 // 変換後の日付を逆算して確認
                 var checkStartDate = DateTimeOffset.FromUnixTimeSeconds(unixStartTime).DateTime;
                 var checkEndDate = DateTimeOffset.FromUnixTimeSeconds(unixEndTime).DateTime;
-                _logger.LogInformation("【日付追跡】StockDataService - Unix変換チェック - 元のstartDate: {OrigStartDate}, 変換後: {ConvStartDate}, 元のendDate: {OrigEndDate}, 変換後: {ConvEndDate} (Date tracking - Unix conversion check)",
+                _logger.LogDebug("【日付追跡】StockDataService - Unix変換チェック - 元のstartDate: {OrigStartDate}, 変換後: {ConvStartDate}, 元のendDate: {OrigEndDate}, 変換後: {ConvEndDate} (Date tracking - Unix conversion check)",
                     startDateEST.ToString("yyyy-MM-dd HH:mm:ss"), checkStartDate.ToString("yyyy-MM-dd HH:mm:ss"),
                     endDateEST.ToString("yyyy-MM-dd HH:mm:ss"), checkEndDate.ToString("yyyy-MM-dd HH:mm:ss"));
 
@@ -405,7 +409,7 @@ public class StockDataService : IStockDataService
                 //if (symbol.Contains("."))
                 //{
                 //    yahooSymbol = symbol.Replace(".", "-");
-                //    _logger.LogInformation("ピリオドを含むシンボルをYahoo Finance用に変換: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
+                //    _logger.LogDebug("ピリオドを含むシンボルをYahoo Finance用に変換: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
                 //        symbol, yahooSymbol);
                 //}
 
@@ -443,6 +447,15 @@ label_retry:
                     _logger.LogError("{Symbol}のリクエストが失敗しました。ステータスコード: {StatusCode}, エラー内容: {ErrorContent} (Request failed for symbol)",
                         symbol, response.StatusCode, errorContent);
 
+                    // Internal Server Errorの検出
+                    if (errorContent.Contains("Internal Server Error") || 
+                        (response.StatusCode == HttpStatusCode.InternalServerError) ||
+                        (errorContent.Contains("\"code\":\"Internal Server Error\"")))
+                    {
+                        _logger.LogWarning("{Symbol}のリクエストでInternal Server Errorが発生しました。リトライを中止します。 (Internal Server Error for symbol. Skipping retry.)", symbol);
+                        return new List<StockData>(); // リトライせずに空のリストを返す
+                    }
+
                     // "No data found, symbol may be delisted"エラーの検出
                     if (errorContent.Contains("\"code\":\"Not Found\"") && errorContent.Contains("\"description\":\"No data found, symbol may be delisted\""))
                     {
@@ -450,7 +463,7 @@ label_retry:
                         if (yahooSymbol.Contains("."))
                         {
                             yahooSymbol = yahooSymbol.Replace(".", "-");
-                            _logger.LogInformation("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
+                            _logger.LogDebug("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
                                 symbol, yahooSymbol);
 
                             goto label_retry;
@@ -512,7 +525,7 @@ label_retry:
                     if (yahooSymbol.Contains("."))
                     {
                         yahooSymbol = yahooSymbol.Replace(".", "-");
-                        _logger.LogInformation("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
+                        _logger.LogDebug("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
                             symbol, yahooSymbol);
 
                         goto label_retry;
@@ -629,7 +642,7 @@ label_retry:
                     throw new DataParsingException($"No valid data points found for {symbol}");
                 }
 
-                _logger.LogInformation("{Symbol}の{Count}データポイントの取得に成功しました (Successfully fetched data points for symbol)",
+                _logger.LogDebug("{Symbol}の{Count}データポイントの取得に成功しました (Successfully fetched data points for symbol)",
                     stockDataList.Count, symbol);
 
                 return stockDataList;
@@ -823,7 +836,7 @@ label_retry:
 
         if (dataWasCorrected)
         {
-            _logger.LogInformation("{Symbol}の{Date}のデータが自動修正されました (Data was automatically corrected for symbol at date)", data.Symbol, data.DateTime);
+            _logger.LogDebug("{Symbol}の{Date}のデータが自動修正されました (Data was automatically corrected for symbol at date)", data.Symbol, data.DateTime);
         }
 
         return true;
@@ -847,7 +860,7 @@ label_retry:
     /// <param name="end">終了日</param>
     private void RecordNoDataPeriod(string symbol, DateTime start, DateTime end)
     {
-        _logger.LogInformation("{Symbol}の{StartDate}から{EndDate}までのデータは存在しません (No data exists for symbol from start date to end date)",
+        _logger.LogDebug("{Symbol}の{StartDate}から{EndDate}までのデータは存在しません (No data exists for symbol from start date to end date)",
             symbol, start.ToString("yyyy-MM-dd"), end.ToString("yyyy-MM-dd"));
 
         // ローカルキャッシュに記録
@@ -874,7 +887,7 @@ label_retry:
         //    while (currentDate <= end)
         //    {
         //        _tradingDayCache.RecordNoDataPeriod(currentDate);
-        //        _logger.LogInformation($"日付 {currentDate:yyyy-MM-dd} をTradingDayCacheServiceにデータなし期間として記録しました (Date recorded as no-data period in cache service)");
+        //        _logger.LogDebug($"日付 {currentDate:yyyy-MM-dd} をTradingDayCacheServiceにデータなし期間として記録しました (Date recorded as no-data period in cache service)");
         //        currentDate = currentDate.AddDays(1);
         //    }
         //}
@@ -942,7 +955,7 @@ label_retry:
             {
                 if (_tradingDayCache.IsDateInNoDataPeriod(currentDate))
                 {
-                    _logger.LogInformation($"日付 {currentDate:yyyy-MM-dd} はTradingDayCacheServiceによって全体的なデータなし期間と判断されました (Date marked as no-data period by cache service)");
+                    _logger.LogDebug($"日付 {currentDate:yyyy-MM-dd} はTradingDayCacheServiceによって全体的なデータなし期間と判断されました (Date marked as no-data period by cache service)");
                     return true;
                 }
                 currentDate = currentDate.AddDays(1);
@@ -960,7 +973,7 @@ label_retry:
         {
             if (startDate >= period.Start && endDate <= period.End)
             {
-                _logger.LogInformation($"期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} は、ローカルキャッシュのデータなし期間 {period.Start:yyyy-MM-dd} から {period.End:yyyy-MM-dd} に含まれています (Date range is within a known no-data period)");
+                _logger.LogDebug($"期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} は、ローカルキャッシュのデータなし期間 {period.Start:yyyy-MM-dd} から {period.End:yyyy-MM-dd} に含まれています (Date range is within a known no-data period)");
                 return true;
             }
         }
@@ -998,7 +1011,7 @@ label_retry:
         if (!_delistedSymbols.Contains(symbol))
         {
             _delistedSymbols.Add(symbol);
-            _logger.LogInformation("銘柄{symbol}を上場廃止リストに追加しました (Added symbol {symbol} to delisted symbols list)", symbol);
+            _logger.LogDebug("銘柄{Symbol}を上場廃止リストに追加しました (Added symbol to delisted symbols list)", symbol);
         }
     }
 }

@@ -111,7 +111,7 @@ namespace USStockDownloader.Services
             bool isCacheExpired = await IsCacheExpiredAsync(yearMonthKey);
             if (isCacheExpired)
             {
-                _logger.LogInformation("{Year}年{Month}月のキャッシュが期限切れまたは存在しないため更新します (Updating cache for {Year}-{Month} as it is expired or does not exist)",
+                _logger.LogDebug("{Year}年{Month}月のキャッシュが期限切れまたは存在しないため更新します (Updating cache for {Year}-{Month} as it is expired or does not exist)",
                     normalizedDate.Year, normalizedDate.Month, normalizedDate.Year, normalizedDate.Month);
                 await UpdateTradingDaysForMonthAsync(normalizedDate);
                 
@@ -325,7 +325,7 @@ namespace USStockDownloader.Services
                 command.ExecuteNonQuery();
                 
                 transaction.Commit();
-                _logger.LogInformation("銘柄{Symbol}の期間 {StartDate} から {EndDate} をデータなし期間として記録しました (Period recorded as no-data period for symbol)",
+                _logger.LogDebug("銘柄{Symbol}の期間 {StartDate} から {EndDate} をデータなし期間として記録しました (Period recorded as no-data period for symbol)",
                                     symbol, normalizedStartDate.ToString("yyyy-MM-dd"), normalizedEndDate.ToString("yyyy-MM-dd"));
             }
             catch (Exception ex)
@@ -391,7 +391,7 @@ namespace USStockDownloader.Services
             
             try
             {
-                _logger.LogInformation("{Year}年{Month}月の取引日データを取得しています (Fetching trading days for {Year}-{Month})...",
+                _logger.LogDebug("{Year}年{Month}月の取引日データを取得しています (Fetching trading days for {Year}-{Month})...",
                                     normalizedDate.Year, normalizedDate.Month, normalizedDate.Year, normalizedDate.Month);
                 
                 var tradingDays = await FetchTradingDaysFromYahooFinanceAsync(normalizedDate);
@@ -402,7 +402,7 @@ namespace USStockDownloader.Services
                     
                     await UpdateCacheMetadataAsync(yearMonthKey);
                     
-                    _logger.LogInformation("{Year}年{Month}月の取引日データを更新しました (Trading days updated for {Year}-{Month}): {Count}日",
+                    _logger.LogDebug("{Year}年{Month}月の取引日データを更新しました (Trading days updated for {Year}-{Month}): {Count}日",
                                         normalizedDate.Year, normalizedDate.Month, normalizedDate.Year, normalizedDate.Month, tradingDays.Count);
                 }
                 else
@@ -433,7 +433,7 @@ namespace USStockDownloader.Services
             
             var url = $"https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?period1={ToUnixTimestamp(monthStart)}&period2={ToUnixTimestamp(monthEnd)}&interval=1d";
             
-            _logger.LogInformation("Yahoo Financeから{Year}年{Month}月の取引日データを取得しています (Fetching trading days for {Year}-{Month} from Yahoo Finance)...",
+            _logger.LogDebug("Yahoo Financeから{Year}年{Month}月の取引日データを取得しています (Fetching trading days for {Year}-{Month} from Yahoo Finance)...",
                 monthStart.Year, monthStart.Month, monthStart.Year, monthStart.Month);
             
             int retryCount = 0;
@@ -474,7 +474,7 @@ namespace USStockDownloader.Services
                             var result = results[0];
                             if (result.TryGetProperty("timestamp", out var timestamps))
                             {
-                                _logger.LogInformation("タイムスタンプの数: {Count} (Number of timestamps)", timestamps.GetArrayLength());
+                                _logger.LogDebug("タイムスタンプの数: {Count} (Number of timestamps)", timestamps.GetArrayLength());
                                 
                                 foreach (var timestamp in timestamps.EnumerateArray())
                                 {
@@ -485,7 +485,7 @@ namespace USStockDownloader.Services
                                 
                                 if (tradingDays.Count > 0)
                                 {
-                                    _logger.LogInformation("最初のタイムスタンプ: {FirstTimestamp} ({FirstDate}), 最後のタイムスタンプ: {LastTimestamp} ({LastDate}) (First and last timestamps)",
+                                    _logger.LogDebug("最初のタイムスタンプ: {FirstTimestamp} ({FirstDate}), 最後のタイムスタンプ: {LastTimestamp} ({LastDate}) (First and last timestamps)",
                                         timestamps[0].GetInt64(), tradingDays.First().ToString("yyyy-MM-dd"),
                                         timestamps[timestamps.GetArrayLength() - 1].GetInt64(), tradingDays.Last().ToString("yyyy-MM-dd"));
                                 }

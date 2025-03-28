@@ -29,3 +29,9 @@ public class RateLimitException : StockDataException
     public RateLimitException(string message) : base(message) { }
     public RateLimitException(string message, Exception inner) : base(message, inner) { }
 }
+
+public class InternalServerErrorException : StockDataException
+{
+    public InternalServerErrorException(string message) : base(message) { }
+    public InternalServerErrorException(string message, Exception inner) : base(message, inner) { }
+}

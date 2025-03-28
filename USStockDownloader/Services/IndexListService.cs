@@ -22,7 +22,7 @@ public class IndexListService
     /// <returns>指標リスト</returns>
     public async Task<List<StockSymbol>> GetMajorIndicesAsync()
     {
-        _logger.LogInformation("Getting major indices list");
+        _logger.LogDebug("Getting major indices list");
         return await _indexCacheService.GetIndicesAsync();
     }
     
@@ -32,7 +32,7 @@ public class IndexListService
     /// <returns>指標リスト</returns>
     public async Task<List<StockSymbol>> ForceUpdateMajorIndicesAsync()
     {
-        _logger.LogInformation("Forcing update of major indices list");
+        _logger.LogDebug("Forcing update of major indices list");
         return await _indexCacheService.ForceUpdateAsync();
     }
     
@@ -42,7 +42,7 @@ public class IndexListService
     /// <returns>指標リスト</returns>
     public List<StockSymbol> GetMajorIndices()
     {
-        _logger.LogInformation("Getting major indices list (synchronous)");
+        _logger.LogDebug("Getting major indices list (synchronous)");
         // 非同期メソッドを同期的に呼び出す
         return GetMajorIndicesAsync().GetAwaiter().GetResult();
     }

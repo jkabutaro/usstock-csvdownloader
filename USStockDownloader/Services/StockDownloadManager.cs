@@ -7,6 +7,7 @@ using USStockDownloader.Exceptions;
 using System.IO;
 using USStockDownloader.Utils;
 using USStockDownloader.Options;
+using Spectre.Console;
 
 namespace USStockDownloader.Services;
 
@@ -19,6 +20,14 @@ public class StockDownloadManager
     private static readonly Random _random = new Random();
     private readonly ConcurrentDictionary<string, string> _failedSymbols = new ConcurrentDictionary<string, string>();
     private readonly int _maxConcurrentDownloads;
+    
+    // 進捗表示用のフィールド
+    private int _totalSymbols;
+    private int _completedSymbols;
+    private readonly object _progressLock = new object();
+    private readonly ConcurrentDictionary<string, bool> _activeSymbols = new ConcurrentDictionary<string, bool>();
+    private ProgressContext? _progressContext;
+    private ProgressTask? _progressTask;
 
     public StockDownloadManager(IStockDataService stockDataService, ILogger<StockDownloadManager> logger, DownloadOptions options)
     {
@@ -27,22 +36,58 @@ public class StockDownloadManager
         _maxConcurrentDownloads = options.MaxConcurrentDownloads;
         _semaphore = new SemaphoreSlim(_maxConcurrentDownloads);
         
-        _logger.LogInformation("並列ダウンロード数を{MaxConcurrent}に設定しました (Set concurrent downloads to {MaxConcurrent})", 
+        _logger.LogDebug("並列ダウンロード数を{MaxConcurrent}に設定しました (Set concurrent downloads to {MaxConcurrent})", 
             _maxConcurrentDownloads, _maxConcurrentDownloads);
+    }
+
+    /// <summary>
+    /// プログレスバーを更新します
+    /// </summary>
+    private void UpdateProgressBar(string symbol, bool isCompleted = false)
+    {
+        lock (_progressLock)
+        {
+            if (isCompleted)
+            {
+                _completedSymbols++;
+                _activeSymbols.TryRemove(symbol, out _);
+            }
+            else
+            {
+                _activeSymbols[symbol] = true;
+            }
+
+            if (_progressTask != null)
+            {
+                // 進捗の更新
+                _progressTask.Value = _completedSymbols;
+                
+                // 処理中の銘柄を表示
+                var activeSymbolsList = _activeSymbols.Keys.Take(5).ToList();
+                string activeSymbolsText = string.Join(", ", activeSymbolsList);
+                if (_activeSymbols.Count > 5)
+                {
+                    activeSymbolsText += $" 他 {_activeSymbols.Count - 5} 銘柄";
+                }
+                
+                _progressTask.Description = $"処理中: {activeSymbolsText}";
+            }
+        }
     }
 
     public async Task DownloadStockDataAsync(List<string> symbols, string? outputDirectory = null, DateTime? startDate = null, DateTime? endDate = null, bool quickMode = false)
     {
-        _logger.LogInformation("{Count}件の銘柄のダウンロードを開始します (Starting download for {Count} symbols)", symbols.Count, symbols.Count);
+        _logger.LogDebug("{Count}件の銘柄のダウンロードを開始します (Starting download for {Count} symbols)", symbols.Count, symbols.Count);
+        AnsiConsole.MarkupLine($"[green]{symbols.Count}件の銘柄のダウンロードを開始します[/] [grey](Starting download for {symbols.Count} symbols)[/]");
         
-        _logger.LogInformation("【日付追跡】StockDownloadManager - 開始時 - start: {StartDate}, Year: {Year}, end: {EndDate}, Year: {Year} (Date tracking at start)",
+        _logger.LogDebug("【日付追跡】StockDownloadManager - 開始時 - start: {StartDate}, Year: {Year}, end: {EndDate}, Year: {Year} (Date tracking at start)",
             startDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "", startDate?.Year ?? 0, endDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "", endDate?.Year ?? 0);
 
         // 出力ディレクトリの設定
         var outputDir = outputDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "output");
         Directory.CreateDirectory(outputDir);
 
-        _logger.LogInformation("出力ディレクトリ: {OutputDir} (Output directory)", outputDir);
+        _logger.LogDebug("出力ディレクトリ: {OutputDir} (Output directory)", outputDir);
 
         // 日付範囲の設定
         var start = startDate ?? DateTime.Now.AddYears(-1);
@@ -52,25 +97,28 @@ public class StockDownloadManager
         DateTime originalEndDate = end;
         DateTime adjustedEndDate = StockDataCache.AdjustToLatestTradingDay(end);
         
-        _logger.LogInformation("【日付追跡】StockDownloadManager - 終了日調整前 - originalEndDate: {OrigEndDate}, Year: {Year}, adjustedEndDate: {AdjEndDate}, Year: {Year} (Date tracking before end date adjustment)",
+        _logger.LogDebug("【日付追跡】StockDownloadManager - 終了日調整前 - originalEndDate: {OrigEndDate}, Year: {Year}, adjustedEndDate: {AdjEndDate}, Year: {Year} (Date tracking before end date adjustment)",
             originalEndDate.ToString("yyyy-MM-dd HH:mm:ss"), originalEndDate.Year, adjustedEndDate.ToString("yyyy-MM-dd HH:mm:ss"), adjustedEndDate.Year);
         
         // 調整が行われた場合はユーザーに通知
         if (adjustedEndDate != originalEndDate)
         {
-            _logger.LogWarning(
-                $"指定された終了日（{originalEndDate:yyyy-MM-dd}）はまだデータが存在しないため、最新の取引日（{adjustedEndDate:yyyy-MM-dd}）に調整しました。 " +
-                $"(Adjusted end date from {originalEndDate:yyyy-MM-dd} to latest trading day {adjustedEndDate:yyyy-MM-dd})");
+            var adjustmentMessage = $"指定された終了日（{originalEndDate:yyyy-MM-dd}）はまだデータが存在しないため、最新の取引日（{adjustedEndDate:yyyy-MM-dd}）に調整しました。 " +
+                $"(Adjusted end date from {originalEndDate:yyyy-MM-dd} to latest trading day {adjustedEndDate:yyyy-MM-dd})";
+            
+            _logger.LogWarning(adjustmentMessage);
+            AnsiConsole.MarkupLine($"[yellow]{adjustmentMessage}[/]");
             
             // 調整された終了日を使用
             end = adjustedEndDate;
             
-            _logger.LogInformation("【日付追跡】StockDownloadManager - 終了日調整後 - end: {EndDate}, Year: {Year} (Date tracking after end date adjustment)",
+            _logger.LogDebug("【日付追跡】StockDownloadManager - 終了日調整後 - end: {EndDate}, Year: {Year} (Date tracking after end date adjustment)",
                 end.ToString("yyyy-MM-dd HH:mm:ss"), end.Year);
         }
 
-        _logger.LogInformation("日付範囲: {StartDate}から{EndDate}まで (Date range)", 
+        _logger.LogDebug("日付範囲: {StartDate}から{EndDate}まで (Date range)", 
             start.ToString("yyyy-MM-dd"), end.ToString("yyyy-MM-dd"));
+        AnsiConsole.MarkupLine($"[green]日付範囲:[/] [blue]{start:yyyy-MM-dd}[/][green]から[/][blue]{end:yyyy-MM-dd}[/][green]まで[/] [grey](Date range)[/]");
 
         // クイックモードの場合は、更新が必要な銘柄のみをフィルタリング
         if (quickMode)
@@ -93,107 +141,196 @@ public class StockDownloadManager
                 filteredSymbols.Add(symbol);
             }
             
-            _logger.LogInformation("クイックモード: {SkippedCount}件の銘柄は最新のため処理をスキップします。{FilteredCount}件の銘柄を処理します。 (Quick mode: Skipping up-to-date symbols, processing others)",
-                skippedCount, filteredSymbols.Count);
+            var quickModeMessage = $"クイックモード: {skippedCount}件の銘柄は最新のため処理をスキップします。{filteredSymbols.Count}件の銘柄を処理します。 (Quick mode: Skipping up-to-date symbols, processing others)";
+            _logger.LogDebug(quickModeMessage);
+            AnsiConsole.MarkupLine($"[blue]{quickModeMessage}[/]");
             
             // 更新が必要な銘柄がない場合は終了
             if (filteredSymbols.Count == 0)
             {
-                _logger.LogInformation("全ての銘柄が最新です。処理を終了します。 (All symbols are up-to-date. Exiting.)");
+                var allUpToDateMessage = "すべての銘柄が最新です。処理を終了します。 (All symbols are up-to-date. Terminating process.)";
+                _logger.LogDebug(allUpToDateMessage);
+                AnsiConsole.MarkupLine($"[green]{allUpToDateMessage}[/]");
                 return;
             }
             
+            // フィルタリングされた銘柄リストを使用
             symbols = filteredSymbols;
         }
 
-        // 並列ダウンロードの設定
+        // 進捗表示の初期化
+        _totalSymbols = symbols.Count;
+        _completedSymbols = 0;
+        _activeSymbols.Clear();
+        
+        // 並列ダウンロードの実行
         var tasks = new List<Task>();
         var failedSymbols = new ConcurrentBag<string>();
 
-        foreach (var symbol in symbols)
-        {
-            await _semaphore.WaitAsync();
-
-            tasks.Add(Task.Run(async () =>
+        // Spectre.Consoleを使用した進捗表示
+        await AnsiConsole.Progress()
+            .AutoClear(false)     // プログレスバーが完了しても自動的にクリアしない
+            .HideCompleted(false) // 完了したタスクを非表示にしない
+            .Columns(new ProgressColumn[] 
             {
-                try
-                {
-                    await DownloadSymbolWithRetryAsync(symbol, start, end, outputDir);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError("リトライ後も銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Failed to download after retries)", symbol, ex.Message);
-                    failedSymbols.Add(symbol);
-                    _failedSymbols.TryAdd(symbol, ex.Message);
-                }
-                finally
-                {
-                    _semaphore.Release();
-                }
-            }));
-        }
+                new TaskDescriptionColumn(),    // タスクの説明
+                new ProgressBarColumn(),        // プログレスバー
+                new PercentageColumn(),         // 進捗率
+                new SpinnerColumn(),            // スピナー
+                new ElapsedTimeColumn(),        // 経過時間
+                new RemainingTimeColumn(),      // 残り時間
+            })
+            .StartAsync(async ctx =>
+            {
+                _progressContext = ctx;
+                _progressTask = ctx.AddTask($"[green]ダウンロード実行中...[/]", maxValue: _totalSymbols);
 
-        await Task.WhenAll(tasks);
+                foreach (var symbol in symbols)
+                {
+                    await _semaphore.WaitAsync();
+                    
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            UpdateProgressBar(symbol);
+                            await DownloadSymbolWithRetryAsync(symbol, start, end, outputDir);
+                            UpdateProgressBar(symbol, true);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError("リトライ後も銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Failed to download after retries)", symbol, ex.Message);
+                            failedSymbols.Add(symbol);
+                            _failedSymbols.TryAdd(symbol, ex.Message);
+                            UpdateProgressBar(symbol, true);
+                        }
+                        finally
+                        {
+                            _semaphore.Release();
+                        }
+                    }));
+                }
 
-        // 失敗した銘柄の特別リトライ処理
-        if (failedSymbols.Any())
+                // すべてのタスクが完了するまで待機
+                await Task.WhenAll(tasks);
+            });
+
+        // 改行を入れて読みやすくする
+        AnsiConsole.WriteLine();
+
+        // 失敗した銘柄がある場合は表示
+        if (failedSymbols.Count > 0)
         {
-            _logger.LogWarning("{Count}件の銘柄のダウンロードに失敗しました。特別リトライを試みます... (symbols failed to download. Attempting special retry...)", failedSymbols.Count);
+            var failedMessage = $"{failedSymbols.Count}件の銘柄のダウンロードに失敗しました。特別リトライを試みます... (symbols failed to download. Attempting special retry...)";
+            _logger.LogWarning(failedMessage);
+            AnsiConsole.MarkupLine($"[yellow]{failedMessage}[/]");
             
             // 特別リトライ処理のための待機
             await Task.Delay(TimeSpan.FromSeconds(5));
             
+            // 特別リトライ用の進捗表示の初期化
+            _totalSymbols = failedSymbols.Count;
+            _completedSymbols = 0;
+            _activeSymbols.Clear();
+            
             var specialRetryTasks = new List<Task>();
             var remainingFailedSymbols = new ConcurrentBag<string>();
             
-            foreach (var symbol in failedSymbols)
-            {
-                await _semaphore.WaitAsync();
-                
-                specialRetryTasks.Add(Task.Run(async () =>
+            // Spectre.Consoleを使用した特別リトライの進捗表示
+            await AnsiConsole.Progress()
+                .AutoClear(false)
+                .HideCompleted(false)
+                .Columns(new ProgressColumn[] 
                 {
-                    try
+                    new TaskDescriptionColumn(),
+                    new ProgressBarColumn(),
+                    new PercentageColumn(),
+                    new SpinnerColumn(),
+                    new ElapsedTimeColumn(),
+                    new RemainingTimeColumn(),
+                })
+                .StartAsync(async ctx =>
+                {
+                    _progressContext = ctx;
+                    _progressTask = ctx.AddTask($"[red]特別リトライ実行中...[/]", maxValue: _totalSymbols);
+
+                    foreach (var symbol in failedSymbols)
                     {
-                        // 特別リトライ処理（より長い待機時間と追加のリトライ回数）
-                        _logger.LogInformation("銘柄{Symbol}の特別リトライを実行します (Special retry for symbol)", symbol);
-                        await SpecialRetryForSymbolAsync(symbol, start, end, outputDir);
+                        await _semaphore.WaitAsync();
+                        
+                        specialRetryTasks.Add(Task.Run(async () =>
+                        {
+                            try
+                            {
+                                // 特別リトライ処理（より長い待機時間と追加のリトライ回数）
+                                _logger.LogDebug("銘柄{Symbol}の特別リトライを実行します (Special retry for symbol)", symbol);
+                                UpdateProgressBar(symbol);
+                                await SpecialRetryForSymbolAsync(symbol, start, end, outputDir);
+                                UpdateProgressBar(symbol, true);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError("特別リトライでも銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Symbol failed even with special retry)", symbol, ex.Message);
+                                remainingFailedSymbols.Add(symbol);
+                                _failedSymbols.TryAdd(symbol, ex.Message);
+                                UpdateProgressBar(symbol, true);
+                            }
+                            finally
+                            {
+                                _semaphore.Release();
+                            }
+                        }));
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError("特別リトライでも銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Symbol failed even with special retry)", symbol, ex.Message);
-                        remainingFailedSymbols.Add(symbol);
-                    }
-                    finally
-                    {
-                        _semaphore.Release();
-                    }
-                }));
-            }
+
+                    // すべてのタスクが完了するまで待機
+                    await Task.WhenAll(specialRetryTasks);
+                });
             
-            await Task.WhenAll(specialRetryTasks);
+            // 改行を入れて読みやすくする
+            AnsiConsole.WriteLine();
             
             // 最終的な結果の報告
             if (remainingFailedSymbols.Any())
             {
-                _logger.LogError("特別リトライ後も{Count}件の銘柄のダウンロードに失敗しました: {Symbols} (symbols still failed after special retry)", 
-                    remainingFailedSymbols.Count, string.Join(", ", remainingFailedSymbols));
+                var finalFailedMessage = $"{remainingFailedSymbols.Count}件の銘柄のダウンロードに失敗しました (symbols still failed after special retry)";
+                _logger.LogError(finalFailedMessage);
+                
+                var table = new Table();
+                table.Title = new TableTitle($"[red]{finalFailedMessage}[/]");
+                table.AddColumn(new TableColumn("[yellow]銘柄[/]").Centered());
+                table.AddColumn(new TableColumn("[yellow]エラーメッセージ[/]"));
+                
+                foreach (var symbol in remainingFailedSymbols)
+                {
+                    _failedSymbols.TryGetValue(symbol, out var errorMessage);
+                    table.AddRow($"[red]{symbol}[/]", $"[grey]{errorMessage}[/]");
+                }
+                
+                AnsiConsole.Write(table);
                 
                 // 失敗した銘柄のレポートを作成
                 await CreateFailedSymbolsReportAsync(outputDir);
             }
             else
             {
-                _logger.LogInformation("特別リトライ後、全ての銘柄のダウンロードに成功しました (All symbols successfully downloaded after special retry)");
+                var allSuccessMessage = "特別リトライ後、全ての銘柄のダウンロードに成功しました (All symbols successfully downloaded after special retry)";
+                _logger.LogDebug(allSuccessMessage);
+                AnsiConsole.MarkupLine($"[green]{allSuccessMessage}[/]");
             }
         }
         else
         {
-            _logger.LogInformation("全ての銘柄のダウンロードに成功しました (All symbols successfully downloaded)");
+            var successMessage = $"すべての銘柄のダウンロードが完了しました (Successfully downloaded all symbols)";
+            _logger.LogDebug(successMessage);
+            AnsiConsole.MarkupLine($"[green]{successMessage}[/]");
         }
+
+        Console.WriteLine($"ダウンロード完了 (Download completed)");
     }
 
     private async Task DownloadSymbolWithRetryAsync(string symbol, DateTime startDate, DateTime endDate, string outputDir)
     {
+        UpdateProgressBar(symbol);
         int retryCount = 0;
         Exception? lastException = null;
 
@@ -248,7 +385,7 @@ public class StockDownloadManager
                 await Task.Delay(TimeSpan.FromSeconds(3 + retryCount * 2));
                 
                 await ProcessSymbolAsync(symbol, startDate, endDate, outputDir);
-                _logger.LogInformation("銘柄{Symbol}の特別リトライが成功しました (Special retry succeeded)", symbol);
+                _logger.LogDebug("銘柄{Symbol}の特別リトライが成功しました (Special retry succeeded)", symbol);
                 return; // 成功したら終了
             }
             catch (Exception ex)
@@ -257,25 +394,22 @@ public class StockDownloadManager
                 
                 if (retryCount < SPECIAL_MAX_RETRY)
                 {
-                    var delay = TimeSpan.FromSeconds(Math.Pow(2, retryCount + 2) + _random.Next(0, 2000) / 1000.0);
-                    _logger.LogWarning("銘柄{Symbol}の特別リトライ {Retry}/{MaxRetry} が失敗しました: {ErrorMessage}、{Delay}秒待機します (Special retry failed, waiting)", 
-                        symbol, retryCount, SPECIAL_MAX_RETRY, ex.Message, delay.TotalSeconds);
+                    var delay = TimeSpan.FromSeconds(5 + retryCount * 3);
+                    _logger.LogWarning("銘柄{Symbol}の特別リトライ中にエラーが発生しました: {ErrorMessage}、リトライ {Retry}/{MaxRetry} を{Delay}秒後に実行します (Error during special retry, retry after delay)", 
+                        symbol, ex.Message, retryCount, SPECIAL_MAX_RETRY, delay.TotalSeconds);
                     await Task.Delay(delay);
-                }
-                else
-                {
-                    _logger.LogError("銘柄{Symbol}の全ての特別リトライが失敗しました: {ErrorMessage} (All special retries failed)", symbol, ex.Message);
-                    throw;
                 }
             }
         }
+        
+        throw new Exception($"特別リトライ処理後も銘柄{symbol}のダウンロードに失敗しました (Failed to download {symbol} after special retry)");
     }
 
     private async Task ProcessSymbolAsync(string symbol, DateTime startDate, DateTime endDate, string outputDir)
     {
         try
         {
-            _logger.LogInformation("銘柄を処理中: {Symbol} (Processing symbol)", symbol);
+            _logger.LogDebug("銘柄を処理中: {Symbol} (Processing symbol)", symbol);
 
             string safeSymbol = symbol;
             
@@ -291,7 +425,7 @@ public class StockDownloadManager
             // キャッシュの有効期限を4時間から12時間に延長
             if (!StockDataCache.NeedsUpdate(symbol, startDate, endDate, TimeSpan.FromHours(12)) && fileExists)
             {
-                _logger.LogInformation("銘柄{Symbol}のキャッシュデータを使用します (Using cached data)", symbol);
+                _logger.LogDebug("銘柄{Symbol}のキャッシュデータを使用します (Using cached data)", symbol);
                 return;
             }
 
@@ -329,7 +463,7 @@ label_retry:
                     
                     if (stockDataList.Any())
                     {
-                        _logger.LogInformation("銘柄{Symbol}のデータを分割取得で成功しました。合計: {Count}件 (Successfully fetched data with split periods)", 
+                        _logger.LogDebug("銘柄{Symbol}のデータを分割取得で成功しました。合計: {Count}件 (Successfully fetched data with split periods)", 
                             symbol, stockDataList.Count);
                     }
                 }
@@ -356,7 +490,7 @@ label_retry:
                 
                 await csv.WriteRecordsAsync(stockDataList);
 
-                _logger.LogInformation("銘柄{Symbol}のデータを正常に保存しました: {Count}件 (Successfully saved data)", 
+                _logger.LogDebug("銘柄{Symbol}のデータを正常に保存しました: {Count}件 (Successfully saved data)", 
                     symbol, stockDataList.Count);
                 
                 // キャッシュを更新（実際のデータリストを渡す）
@@ -378,7 +512,7 @@ label_retry:
                     if (requestSymbol.Contains("."))
                     {
                         requestSymbol = requestSymbol.Replace(".", "-");
-                        _logger.LogInformation("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
+                        _logger.LogDebug("ピリオドを含むシンボルをYahoo Finance用に変換して再挑戦: {OriginalSymbol} -> {YahooSymbol} (Symbol contains period, converting for Yahoo Finance)",
                             symbol, requestSymbol);
 
                         goto label_retry;
@@ -413,7 +547,7 @@ label_retry:
         try
         {
             var reportPath = Path.Combine(outputDir, "failed_symbols_report.csv");
-            _logger.LogInformation("失敗した銘柄のレポートを作成しています: {ReportPath} (Creating failed symbols report)", PathUtils.ToRelativePath(reportPath));
+            _logger.LogDebug("失敗した銘柄のレポートを作成しています: {ReportPath} (Creating failed symbols report)", PathUtils.ToRelativePath(reportPath));
             
             await using var writer = new StreamWriter(reportPath);
             await using var csv = new CsvWriter(writer, new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture));
@@ -431,7 +565,7 @@ label_retry:
                 csv.NextRecord();
             }
             
-            _logger.LogInformation("失敗した銘柄のレポートを作成しました: {Count}件 (Created failed symbols report: count)", _failedSymbols.Count);
+            _logger.LogDebug("失敗した銘柄のレポートを作成しました: {Count}件 (Created failed symbols report: count)", _failedSymbols.Count);
         }
         catch (Exception ex)
         {

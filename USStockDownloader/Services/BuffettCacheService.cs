@@ -45,21 +45,21 @@ namespace USStockDownloader.Services
 
             if (forceUpdate || !cacheExists || cacheExpired)
             {
-                _logger.LogInformation("Fetching Buffett portfolio symbols from Wikipedia");
+                _logger.LogDebug("Fetching Buffett portfolio symbols from Wikipedia");
                 var fetchedSymbols = await FetchFromWikipediaAsync();
                 await SaveToCacheAsync(fetchedSymbols, _cacheFilePath);
                 return ApplySymbolMappings(fetchedSymbols);
             }
 
-            _logger.LogInformation("Loading Buffett portfolio symbols from cache {CacheFile}", PathUtils.ToRelativePath(_cacheFilePath));
+            _logger.LogDebug("Loading Buffett portfolio symbols from cache {CacheFile}", PathUtils.ToRelativePath(_cacheFilePath));
             var cachedSymbols = await LoadFromCacheAsync(_cacheFilePath);
-            _logger.LogInformation("Loaded {Count} Buffett portfolio symbols", cachedSymbols.Count);
+            _logger.LogDebug("Loaded {Count} Buffett portfolio symbols", cachedSymbols.Count);
             return ApplySymbolMappings(cachedSymbols);
         }
 
         public async Task ForceUpdateAsync()
         {
-            _logger.LogInformation("Forcing update of Buffett portfolio symbols...");
+            _logger.LogDebug("Forcing update of Buffett portfolio symbols...");
             var fetchedSymbols = await FetchFromWikipediaAsync();
             await SaveToCacheAsync(fetchedSymbols, _cacheFilePath);
         }
@@ -126,7 +126,7 @@ namespace USStockDownloader.Services
                 return AddHardcodedSymbols();
             }
 
-            _logger.LogInformation("Found {Count} Buffett portfolio symbols", symbols.Count);
+            _logger.LogDebug("Found {Count} Buffett portfolio symbols", symbols.Count);
             return symbols;
         }
 
@@ -172,7 +172,7 @@ namespace USStockDownloader.Services
                 "VZ"    // ベライゾン
             };
 
-            _logger.LogInformation("Using {Count} hardcoded Buffett portfolio symbols", hardcoded.Count);
+            _logger.LogDebug("Using {Count} hardcoded Buffett portfolio symbols", hardcoded.Count);
             return hardcoded.Select(s => new StockSymbol { Symbol = s }).ToList();
         }
 
@@ -192,13 +192,13 @@ namespace USStockDownloader.Services
             var mappings = GetSymbolMappings();
             var result = new List<StockSymbol>();
 
-            _logger.LogInformation("Applying symbol mappings to {Count} symbols", originalSymbols.Count);
+            _logger.LogDebug("Applying symbol mappings to {Count} symbols", originalSymbols.Count);
 
             foreach (var symbol in originalSymbols)
             {
                 if (mappings.TryGetValue(symbol.Symbol, out var mappedSymbol))
                 {
-                    _logger.LogInformation("Mapping symbol {Original} to {Mapped}", symbol.Symbol, mappedSymbol);
+                    _logger.LogDebug("Mapping symbol {Original} to {Mapped}", symbol.Symbol, mappedSymbol);
                     // マッピングされたシンボルを追加（元のは追加しない）
                     result.Add(new StockSymbol { Symbol = mappedSymbol });
                 }
@@ -208,7 +208,7 @@ namespace USStockDownloader.Services
                 }
             }
 
-            _logger.LogInformation("After mapping: {Count} symbols", result.Count);
+            _logger.LogDebug("After mapping: {Count} symbols", result.Count);
             return result;
         }
 
@@ -240,7 +240,7 @@ namespace USStockDownloader.Services
 
                 var json = JsonSerializer.Serialize(symbols, new JsonSerializerOptions { WriteIndented = true });
                 await File.WriteAllTextAsync(cachePath, json);
-                _logger.LogInformation("Saved {Count} Buffett portfolio symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(cachePath));
+                _logger.LogDebug("Saved {Count} Buffett portfolio symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(cachePath));
             }
             catch (Exception ex)
             {

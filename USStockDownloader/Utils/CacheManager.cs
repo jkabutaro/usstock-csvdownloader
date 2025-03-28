@@ -62,6 +62,9 @@ namespace USStockDownloader.Utils
                     try
                     {
                         File.Delete(file);
+
+                        Console.WriteLine($"{file}を削除しました。");
+
                         deletedCount++;
                     }
                     catch (Exception ex)
@@ -76,6 +79,7 @@ namespace USStockDownloader.Utils
                     try
                     {
                         deletedCount += DeleteDirectoryContents(directory);
+                        Console.WriteLine($"{directory}を削除しました。");
                     }
                     catch (Exception ex)
                     {

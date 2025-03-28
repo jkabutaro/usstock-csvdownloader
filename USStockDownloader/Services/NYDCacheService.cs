@@ -54,7 +54,7 @@ namespace USStockDownloader.Services
                         if (cachedSymbols != null && cachedSymbols.Count > 0)
                         {
                             _cachedSymbols = cachedSymbols;
-                            _logger.LogInformation("Loaded {Count} NY Dow symbols from cache", _cachedSymbols.Count);
+                            _logger.LogDebug("Loaded {Count} NY Dow symbols from cache", _cachedSymbols.Count);
                             return _cachedSymbols;
                         }
                     }
@@ -78,7 +78,7 @@ namespace USStockDownloader.Services
 
         public async Task ForceUpdateAsync()
         {
-            _logger.LogInformation("Forcing update of NY Dow symbols");
+            _logger.LogDebug("Forcing update of NY Dow symbols");
             _cachedSymbols = await FetchNYDSymbols();
             await SaveSymbolsToCache(_cachedSymbols);
         }
@@ -134,7 +134,7 @@ namespace USStockDownloader.Services
                     }
                 }
 
-                _logger.LogInformation("Fetched {Count} NY Dow symbols from Wikipedia", symbols.Count);
+                _logger.LogDebug("Fetched {Count} NY Dow symbols from Wikipedia", symbols.Count);
                 return symbols;
             }
             catch (Exception ex)
@@ -157,7 +157,7 @@ namespace USStockDownloader.Services
 
                 var json = JsonSerializer.Serialize(symbols, new JsonSerializerOptions { WriteIndented = true });
                 await File.WriteAllTextAsync(_cacheFilePath, json);
-                _logger.LogInformation("Saved {Count} NY Dow symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(_cacheFilePath));
+                _logger.LogDebug("Saved {Count} NY Dow symbols to cache file {CacheFile}", symbols.Count, PathUtils.ToRelativePath(_cacheFilePath));
             }
             catch (Exception ex)
             {

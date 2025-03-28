@@ -379,7 +379,7 @@ namespace USStockDownloader
             var services = new ServiceCollection();
 
             // 設定ファイルを読み込む
-            var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            var configPath = Path.Combine(AppContext.BaseDirectory, "USStockDownloader_settings.json");
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile(configPath, optional: false, reloadOnChange: true)
                 .Build();

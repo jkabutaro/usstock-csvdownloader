@@ -47,7 +47,7 @@ public class IndexCacheService
             var fileInfo = new FileInfo(_cacheFilePath);
             if (DateTime.Now - fileInfo.LastWriteTime < _cacheExpiry)
             {
-                _logger.LogInformation("Using cached index list from {CacheFile}", PathUtils.ToRelativePath(_cacheFilePath));
+                _logger.LogDebug("Using cached index list from {CacheFile}", PathUtils.ToRelativePath(_cacheFilePath));
                 var json = await File.ReadAllTextAsync(_cacheFilePath);
                 var cachedIndices = JsonSerializer.Deserialize<List<StockSymbol>>(json);
                 if (cachedIndices != null && cachedIndices.Count > 0)
@@ -58,7 +58,7 @@ public class IndexCacheService
         }
         
         // キャッシュがない、古い、または無効な場合は新しいデータを取得
-        _logger.LogInformation("Fetching index list from Yahoo Finance...");
+        _logger.LogDebug("Fetching index list from Yahoo Finance...");
         return await FetchIndicesFromYahooFinanceAsync();
     }
     
@@ -68,7 +68,7 @@ public class IndexCacheService
     /// <returns>指数リスト</returns>
     public async Task<List<StockSymbol>> ForceUpdateAsync()
     {
-        _logger.LogInformation("Forcing update of index list from Yahoo Finance...");
+        _logger.LogDebug("Forcing update of index list from Yahoo Finance...");
         return await FetchIndicesFromYahooFinanceAsync();
     }
     
@@ -92,7 +92,7 @@ public class IndexCacheService
         //    // フォールバック用のデフォルト指数リスト
         //    var defaultIndices = GetDefaultIndices();
             
-        //    _logger.LogInformation("Fetching indices from Yahoo Finance using Playwright...");
+        //    _logger.LogDebug("Fetching indices from Yahoo Finance using Playwright...");
             
         //    try
         //    {
@@ -109,22 +109,22 @@ public class IndexCacheService
         //        page.SetDefaultTimeout(60000); // 60秒に延長
                 
         //        // Yahoo Financeのインデックスページにアクセス
-        //        _logger.LogInformation("Navigating to Yahoo Finance page: {Url}", YahooFinanceIndicesUrl);
+        //        _logger.LogDebug("Navigating to Yahoo Finance page: {Url}", YahooFinanceIndicesUrl);
         //        await page.GotoAsync(YahooFinanceIndicesUrl);
                 
         //        // DOM Contentがロードされるまでのみ待機（NetworkIdleは時間がかかりすぎる）
-        //        _logger.LogInformation("Waiting for page to load (DOM Content)...");
+        //        _logger.LogDebug("Waiting for page to load (DOM Content)...");
         //        await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
                 
         //        // テーブル要素が表示されるまで待機
-        //        _logger.LogInformation("Waiting for table element to be visible...");
+        //        _logger.LogDebug("Waiting for table element to be visible...");
         //        try
         //        {
         //            await page.WaitForSelectorAsync("table[data-testid='table-container']", new PageWaitForSelectorOptions
         //            {
         //                Timeout = 10000 // 10秒のタイムアウト
         //            });
-        //            _logger.LogInformation("Table element found");
+        //            _logger.LogDebug("Table element found");
         //        }
         //        catch (Exception ex)
         //        {
@@ -132,7 +132,7 @@ public class IndexCacheService
         //            // テーブルが見つからなくても処理を続行
         //        }
                 
-        //        _logger.LogInformation("Yahoo Finance page loaded successfully");
+        //        _logger.LogDebug("Yahoo Finance page loaded successfully");
                 
         //        // インデックスデータを含むテーブルのHTMLを取得
         //        var content = await page.ContentAsync();
@@ -183,7 +183,7 @@ public class IndexCacheService
         //                    try
         //                    {
         //                        // 時系列あるかチェック 全部受信できるの確認したのでコメントアウト いれると時間かかるからね
-        //                        //_logger.LogInformation("Checking historical data availability for symbol: {Symbol}", symbol);
+        //                        //_logger.LogDebug("Checking historical data availability for symbol: {Symbol}", symbol);
         //                        //var historicalUrl = $"https://finance.yahoo.com/quote/{symbol}/history";
         //                        //var response = await page.GotoAsync(historicalUrl);
 
@@ -201,7 +201,7 @@ public class IndexCacheService
         //                        //    continue;
         //                        //}
 
-        //                        _logger.LogInformation("Historical data is available for symbol: {Symbol}", symbol);
+        //                        _logger.LogDebug("Historical data is available for symbol: {Symbol}", symbol);
         //                        indices.Add(new StockSymbol
         //                        {
         //                            Symbol = symbol,
@@ -220,7 +220,7 @@ public class IndexCacheService
                 
         //        if (indices.Count > 0)
         //        {
-        //            _logger.LogInformation("Successfully fetched {Count} indices from Yahoo Finance", indices.Count);
+        //            _logger.LogDebug("Successfully fetched {Count} indices from Yahoo Finance", indices.Count);
         //            await SaveIndicesCache(indices);
         //            return indices;
         //        }
@@ -263,7 +263,7 @@ public class IndexCacheService
         {
             var json = JsonSerializer.Serialize(indices, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(_cacheFilePath, json);
-            _logger.LogInformation("Saved {Count} indices to cache file {CacheFile}", indices.Count, PathUtils.ToRelativePath(_cacheFilePath));
+            _logger.LogDebug("Saved {Count} indices to cache file {CacheFile}", indices.Count, PathUtils.ToRelativePath(_cacheFilePath));
         }
         catch (Exception ex)
         {
