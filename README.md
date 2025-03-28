@@ -153,12 +153,13 @@ Date,Open,High,Low,Close,Volume
 
 | カラム | 説明 | 型 |
 |--------|------|-----|
-| Date | 取引日（yyyymmdd形式の整数値） | 整数 |
+| Date | 取引日（yyyy-mm-dd形式） | 文字列 |
 | Open | 始値 | 数値 |
 | High | 高値 | 数値 |
 | Low | 安値 | 数値 |
 | Close | 終値 | 数値 |
 | Volume | 出来高 | 整数 |
+| Adj Close | 調整後終値 | 数値 |
 
 ### 銘柄リストCSVファイル (Symbol List CSV File)
 
