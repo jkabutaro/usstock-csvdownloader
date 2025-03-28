@@ -86,14 +86,14 @@ dotnet build
 
 ### 基本的な使い方 (Basic Usage)
 ```bash
-USStockDownloader --sp500 -o ./data
+USStockDownloader --sp500 --output ./data
 ```
 - S&P 500銘柄のデータをダウンロード (Download S&P 500 symbol data)
 - デフォルトでクイックモードが有効：最新のデータを持つ銘柄はスキップされます (Quick mode is enabled by default: Symbols with up-to-date data are skipped)
 
 ### キャッシュクリアオプション (Cache Clear Option)
 ```bash
-USStockDownloader --cache-clear --sp500 -o ./data
+USStockDownloader --cache-clear --sp500 --output ./data
 ```
 - キャッシュをクリアしてからS&P 500銘柄のデータをダウンロード (Clear cache before downloading S&P 500 symbol data)
 
