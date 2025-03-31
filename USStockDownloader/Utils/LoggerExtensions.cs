@@ -36,7 +36,7 @@ namespace USStockDownloader.Utils
                         try 
                         {
                             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                            var logDir = Path.Combine(baseDir, "logs");
+                            var logDir = Path.Combine(baseDir, "USStockDownloader_logs");
                             if (!Directory.Exists(logDir))
                             {
                                 Directory.CreateDirectory(logDir);
@@ -49,10 +49,17 @@ namespace USStockDownloader.Utils
                         }
 
                         // Serilogの設定
+                        var appBaseDir = AppDomain.CurrentDomain.BaseDirectory;
+                        var appLogDir = Path.Combine(appBaseDir, "USStockDownloader_logs");
+                        
+                        // 絶対パスを取得して表示（デバッグ用）
+                        var absoluteLogPath = Path.GetFullPath(appLogDir);
+                        Console.WriteLine($"AppLoggerFactory: ログディレクトリの絶対パス: {absoluteLogPath}");
+                        
                         var logConfig = new LoggerConfiguration()
                             .MinimumLevel.Debug() // Debugレベルからすべて記録
                             .WriteTo.File(
-                                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "debug_.log"),
+                                Path.Combine(appLogDir, "USStockDownloader_debug_.log"),
                                 rollingInterval: RollingInterval.Day,
                                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
 

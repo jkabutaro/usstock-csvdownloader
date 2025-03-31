@@ -40,7 +40,7 @@
       {
         "Name": "File",
         "Args": {
-          "path": "logs/app_.log",
+          "path": "USStockDownloader_logs/app_.log",
           "rollingInterval": "Day",
           "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
           "restrictedToMinimumLevel": "Information"

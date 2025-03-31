@@ -199,7 +199,10 @@ public class StockDownloadManager
                         }
                         catch (Exception ex)
                         {
+                            // プログレスバーの干渉を避けるために改行を挿入
+                            Console.WriteLine();
                             _logger.LogError("リトライ後も銘柄{Symbol}のダウンロードに失敗しました: {ErrorMessage} (Failed to download after retries)", symbol, ex.Message);
+                            Console.WriteLine($"エラー: 銘柄「{symbol}」のダウンロードに失敗しました。詳細はログファイルを確認してください。");
                             failedSymbols.Add(symbol);
                             _failedSymbols.TryAdd(symbol, ex.Message);
                             UpdateProgressBar(symbol, true);

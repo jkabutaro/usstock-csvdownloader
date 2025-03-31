@@ -50,7 +50,7 @@ namespace USStockDownloader
                 // (Initialize log directory)
                 try 
                 {
-                    var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+                    var logDir = Path.Combine(AppContext.BaseDirectory, "USStockDownloader_logs");
                     if (!Directory.Exists(logDir))
                     {
                         Directory.CreateDirectory(logDir);
@@ -392,16 +392,26 @@ namespace USStockDownloader
                 var loggerFactory = AppLoggerFactory.GetLoggerFactory();
                 
                 // Serilogの設定（アプリログ用）
-                // コンソールには警告レベル以上のみ、ファイルには情報レベル以上を出力
+                // コンソールにはエラーレベル以上のみ、ファイルには情報レベル以上を出力
                 var logConfig = new LoggerConfiguration()
                     .MinimumLevel.Information()
                     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                     .Enrich.FromLogContext()
-                    .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Warning);
+                    .WriteTo.Console(
+                        restrictedToMinimumLevel: LogEventLevel.Error,
+                        outputTemplate: "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
 
                 try
                 {
-                    string logFilePath = Path.Combine(AppContext.BaseDirectory, "logs", "app_.log");
+                    // ログディレクトリを確実に作成
+                    var logDir = Path.Combine(AppContext.BaseDirectory, "USStockDownloader_logs");
+                    if (!Directory.Exists(logDir))
+                    {
+                        Directory.CreateDirectory(logDir);
+                        Console.WriteLine($"ログディレクトリを作成しました: {logDir} (Created log directory)");
+                    }
+                    
+                    string logFilePath = Path.Combine(logDir, "USStockDownloader_app_.log");
                     logConfig = logConfig.WriteTo.File(
                         logFilePath,
                         rollingInterval: RollingInterval.Day,

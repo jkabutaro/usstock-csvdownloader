@@ -85,7 +85,7 @@ public class SymbolListExportService
                     foreach (var symbol in symbols)
                     {
                         csv.WriteField(symbol.Symbol);
-                        csv.WriteField(symbol.Name);
+                        csv.WriteField(CleanCompanyName(symbol.Name));
                         csv.WriteField(symbol.Market);
                         csv.WriteField(symbol.Type);
                         csv.NextRecord();
@@ -268,7 +268,7 @@ public class SymbolListExportService
                             fullName = englishName;
                         }
                         
-                        csv.WriteField(fullName);
+                        csv.WriteField(CleanCompanyName(fullName));
                         
                         // マーケット情報
                         string market = "NYSE"; // デフォルトはNYSE
@@ -341,7 +341,7 @@ public class SymbolListExportService
                     foreach (var index in indices)
                     {
                         csv.WriteField(index.Symbol);
-                        csv.WriteField(index.Name);
+                        csv.WriteField(CleanCompanyName(index.Name));
                         csv.WriteField(index.Market);
                         csv.WriteField(index.Type);
                         csv.NextRecord();
@@ -535,7 +535,7 @@ public class SymbolListExportService
                             fullName = englishName;
                         }
                         
-                        csv.WriteField(fullName);
+                        csv.WriteField(CleanCompanyName(fullName));
                         
                         // マーケット情報
                         string market = "NYSE"; // デフォルトはNYSE
@@ -717,7 +717,13 @@ public class SymbolListExportService
             using (var writer = new StreamWriter(csvPath, false, System.Text.Encoding.UTF8))
             using (var csv = new CsvHelper.CsvWriter(writer, System.Globalization.CultureInfo.InvariantCulture))
             {
-                csv.WriteRecords(sbiSymbols);
+                csv.WriteRecords(sbiSymbols.Select(s => new 
+                {
+                    Symbol = s.Symbol,
+                    Name = CleanCompanyName(s.Name),
+                    Market = s.Market,
+                    Type = s.Type
+                }));
             }
             
             _logger.LogDebug("Successfully exported SBI Securities US stock list to CSV");
@@ -733,5 +739,19 @@ public class SymbolListExportService
     public void ExportSBIListToCsv(string csvPath)
     {
         ExportSBIListToCsvAsync(csvPath).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// 銘柄名から特殊文字(カンマ、ダブルクォーテーション)を削除します
+    /// </summary>
+    /// <param name="name">元の銘柄名</param>
+    /// <returns>特殊文字を削除した銘柄名</returns>
+    private string CleanCompanyName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return string.Empty;
+            
+        // カンマとダブルクォーテーションを削除
+        return name.Replace(",", "").Replace("\"", "");
     }
 }
