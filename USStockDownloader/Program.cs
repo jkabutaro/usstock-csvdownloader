@@ -394,7 +394,7 @@ namespace USStockDownloader
                 // Serilogの設定（アプリログ用）
                 // コンソールにはエラーレベル以上のみ、ファイルには情報レベル以上を出力
                 var logConfig = new LoggerConfiguration()
-                    .MinimumLevel.Information()
+                    .MinimumLevel.Debug()
                     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                     .Enrich.FromLogContext()
                     .WriteTo.Console(
@@ -416,7 +416,16 @@ namespace USStockDownloader
                         logFilePath,
                         rollingInterval: RollingInterval.Day,
                         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Information);
+                        restrictedToMinimumLevel: LogEventLevel.Debug);
+                    
+                    // デバッグログ用のファイルも追加
+                    string debugLogFilePath = Path.Combine(logDir, "USStockDownloader_debug_.log");
+                    logConfig = logConfig.WriteTo.File(
+                        debugLogFilePath,
+                        rollingInterval: RollingInterval.Day,
+                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                        restrictedToMinimumLevel: LogEventLevel.Debug);
+                    
                     Console.WriteLine($"アプリログファイルパス: {logFilePath} (App log file path)");
                 }
                 catch (Exception ex)

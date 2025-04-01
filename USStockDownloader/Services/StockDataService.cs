@@ -162,7 +162,8 @@ public class StockDataService : IStockDataService
                 int count = stockDataPoints.Count();
                 if (count > 0)
                 {
-                    _logger.LogDebug($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)");
+                    _logger.LogDebug($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)",
+                        symbol, count);
                     
                     // StockDataPointからStockDataへの変換
                     var stockData = stockDataPoints.Select(p => new StockData
@@ -359,6 +360,16 @@ public class StockDataService : IStockDataService
 
     private async Task<List<StockData>> FetchStockDataAsync(string symbol, DateTime startDate, DateTime endDate)
     {
+        // リトライポリシーの外側にダウンロード準備ログを追加
+        _logger.LogDebug("RETRY外: {Symbol}のデータ取得準備を開始します: {StartDate}から{EndDate}まで (Preparing to fetch data for symbol)",
+            symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+        _logger.LogDebug("RETRY外: 【Yahoo Financeからダウンロード】銘柄: {Symbol}, 期間: {StartDate} から {EndDate} までのデータを取得中 (Downloading data from Yahoo Finance)",
+            symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+        _logger.LogDebug("RETRY外: 【日付追跡】StockDataService - FetchStockDataAsync開始 - startDate: {StartDate}, Year: {StartYear}, endDate: {EndDate}, Year: {EndYear}",
+            startDate.ToString("yyyy-MM-dd HH:mm:ss"), startDate.Year, endDate.ToString("yyyy-MM-dd HH:mm:ss"), endDate.Year);
+
         return await _retryPolicy.ExecuteAsync(async (context) =>
         {
             context["Symbol"] = symbol;
@@ -369,11 +380,14 @@ public class StockDataService : IStockDataService
                 startDate = startDate.Date;
                 endDate = endDate.Date;
 
-                _logger.LogDebug("{Symbol}のデータを取得しています: {StartDate}から{EndDate}まで (Fetching data for symbol)",
+                _logger.LogDebug("RETRY内: {Symbol}のデータを取得しています: {StartDate}から{EndDate}まで (Fetching data for symbol)",
                     symbol,
                     startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
-                _logger.LogDebug("【日付追跡】StockDataService - FetchStockDataAsync開始 - startDate: {StartDate}, Year: {Year}, endDate: {EndDate}, Year: {Year} (Date tracking)",
+                _logger.LogDebug("RETRY内: 【Yahoo Financeからダウンロード】銘柄: {Symbol}, 期間: {StartDate} から {EndDate} までのデータを取得中 (Downloading data from Yahoo Finance)",
+                    symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+                _logger.LogDebug("RETRY内: 【日付追跡】StockDataService - FetchStockDataAsync開始 - startDate: {StartDate}, Year: {StartYear}, endDate: {EndDate}, Year: {EndYear}",
                     startDate.ToString("yyyy-MM-dd HH:mm:ss"), startDate.Year, endDate.ToString("yyyy-MM-dd HH:mm:ss"), endDate.Year);
 
                 // ETRシンボルの特別処理
@@ -661,7 +675,7 @@ label_retry:
                 }
 
                 _logger.LogDebug("{Symbol}の{Count}データポイントの取得に成功しました (Successfully fetched data points for symbol)",
-                    stockDataList.Count, symbol);
+                    symbol, stockDataList.Count);
 
                 return stockDataList;
             }
@@ -690,6 +704,9 @@ label_retry:
             // 日付の正規化（時刻情報を削除）
             startDate = startDate.Date;
             endDate = endDate.Date;
+
+            _logger.LogDebug("【Yahoo Financeからダウンロード】銘柄: {Symbol}, 期間: {StartDate} から {EndDate} までのデータを取得中 (Downloading data from Yahoo Finance)",
+                symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
             // 日付を米国東部標準時（EST、UTC-5）の正午に設定してUnixタイムスタンプに変換
             var startDateEST = new DateTime(startDate.Year, startDate.Month, startDate.Day, 12, 0, 0);
@@ -991,7 +1008,8 @@ label_retry:
         {
             if (startDate >= period.Start && endDate <= period.End)
             {
-                _logger.LogDebug($"期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} は、ローカルキャッシュのデータなし期間 {period.Start:yyyy-MM-dd} から {period.End:yyyy-MM-dd} に含まれています (Date range is within a known no-data period)");
+                _logger.LogDebug($"期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} は、ローカルキャッシュのデータなし期間 {period.Start:yyyy-MM-dd} から {period.End:yyyy-MM-dd} に含まれています (Date range is within a known no-data period)",
+                    startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), period.Start.ToString("yyyy-MM-dd"), period.End.ToString("yyyy-MM-dd"));
                 return true;
             }
         }
