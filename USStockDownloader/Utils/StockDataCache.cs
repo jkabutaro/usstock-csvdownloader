@@ -121,6 +121,15 @@ namespace USStockDownloader.Utils
         }
 
         /// <summary>
+        /// 市場が現在閉じているかどうかを確認します
+        /// </summary>
+        /// <returns>市場が閉じている場合はtrue、開いている場合はfalse</returns>
+        public static bool IsMarketClosed()
+        {
+            return !IsMarketHours();
+        }
+
+        /// <summary>
         /// 指定された日付が将来の取引日である場合、最新の取引日を返します。
         /// 現在の東部時間の日付より後の日付や、同じ日でも市場がまだ閉じていない場合は
         /// 最新の取引日に調整します。
@@ -177,11 +186,6 @@ namespace USStockDownloader.Utils
                 }
                 previousDay = previousDay.AddDays(-1);
             }
-        }
-
-        private static bool IsMarketClosed()
-        {
-            return !IsMarketHours();
         }
 
         public static DateTime GetLastTradingDay()
@@ -289,12 +293,7 @@ namespace USStockDownloader.Utils
                         return true;
                     }
 
-                    var timeSinceLastUpdate = DateTime.Now - info.LastUpdate;
-                    if (timeSinceLastUpdate > maxAge)
-                    {
-                        _logger.LogDebug($"銘柄 {symbol}: キャッシュが{maxAge.TotalHours}時間より古いため更新が必要です (Symbol {symbol}: Cache is older than {maxAge.TotalHours} hours, update required)");
-                        return true;
-                    }
+                    // 前回DLしてから数時間はダウンロードしないロジックを削除
                     
                     if (info.LastTradingDate < lastTradingDay)
                     {

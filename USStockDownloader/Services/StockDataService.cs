@@ -134,8 +134,11 @@ public class StockDataService : IStockDataService
     //    }
     //}
 
-    public async Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate)
+    public async Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate, bool forceUpdate = false)
     {
+        _logger.LogDebug("GetStockDataAsync開始: 銘柄={Symbol}, 開始日={StartDate}, 終了日={EndDate}, 強制更新={ForceUpdate} (Starting GetStockDataAsync: Symbol, StartDate, EndDate, ForceUpdate)",
+            symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), forceUpdate);
+        
         if (_delistedSymbols.Contains(symbol))
         {
             _logger.LogWarning($"シンボル {symbol} は上場廃止されているためスキップします (Symbol {symbol} is delisted, skipping)");
@@ -149,72 +152,87 @@ public class StockDataService : IStockDataService
             return new List<StockData>();
         }
 
-        try
+        // forceUpdateがtrueの場合は、キャッシュをスキップして常に最新データを取得
+        if (!forceUpdate)
         {
-            // SQLiteキャッシュからデータを取得
-            var stockDataPoints = await _stockDataCache.GetStockDataAsync(symbol, startDate, endDate);
-            int count = stockDataPoints.Count();
-            if (count > 0)
+            try
             {
-                _logger.LogDebug($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)");
-                
-                // StockDataPointからStockDataへの変換
-                var stockData = stockDataPoints.Select(p => new StockData
+                // SQLiteキャッシュからデータを取得
+                var stockDataPoints = await _stockDataCache.GetStockDataAsync(symbol, startDate, endDate);
+                int count = stockDataPoints.Count();
+                if (count > 0)
                 {
-                    Symbol = symbol,
-                    DateTime = p.Date,
-                    Date = p.Date.Year * 10000 + p.Date.Month * 100 + p.Date.Day,
-                    Open = p.Open,
-                    High = p.High,
-                    Low = p.Low,
-                    Close = p.Close,
-                    AdjClose = p.AdjClose,
-                    Volume = p.Volume
-                }).ToList();
-                
-                // メモリキャッシュも更新
-                _dataCache[symbol] = new SymbolCacheData { Data = stockData };
-                
-                return stockData;
-            }
-
-            // メモリキャッシュをチェック（移行期間中の互換性のため）
-            if (_dataCache.TryGetValue(symbol, out var cachedData) && cachedData.Data.Count > 0)
-            {
-                var cachedStartDate = cachedData.Data.Min(d => d.DateTime);
-                var cachedEndDate = cachedData.Data.Max(d => d.DateTime);
-
-                // キャッシュが要求された期間をカバーしている場合
-                if (startDate >= cachedStartDate && endDate <= cachedEndDate)
-                {
-                    _logger.LogDebug($"シンボル {symbol} のメモリキャッシュデータを使用します (Using memory cached data for symbol {symbol})");
+                    _logger.LogDebug($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)");
                     
-                    // メモリキャッシュのデータをSQLiteにも保存
-                    var dataPoints = cachedData.Data.Select(d => new StockDataPoint
+                    // StockDataPointからStockDataへの変換
+                    var stockData = stockDataPoints.Select(p => new StockData
                     {
-                        Date = d.DateTime,
-                        Open = d.Open,
-                        High = d.High,
-                        Low = d.Low,
-                        Close = d.Close,
-                        AdjClose = d.AdjClose,
-                        Volume = d.Volume
+                        Symbol = symbol,
+                        DateTime = p.Date,
+                        Date = p.Date.Year * 10000 + p.Date.Month * 100 + p.Date.Day,
+                        Open = p.Open,
+                        High = p.High,
+                        Low = p.Low,
+                        Close = p.Close,
+                        AdjClose = p.AdjClose,
+                        Volume = p.Volume
                     }).ToList();
                     
-                    await _stockDataCache.SaveStockDataAsync(symbol, dataPoints);
+                    // メモリキャッシュも更新
+                    _dataCache[symbol] = new SymbolCacheData { Data = stockData };
                     
-                    return cachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                    return stockData;
+                }
+
+                // メモリキャッシュをチェック（移行期間中の互換性のため）
+                if (_dataCache.TryGetValue(symbol, out var existingCachedData) && existingCachedData.Data.Count > 0)
+                {
+                    var cachedStartDate = existingCachedData.Data.Min(d => d.DateTime);
+                    var cachedEndDate = existingCachedData.Data.Max(d => d.DateTime);
+
+                    // キャッシュが要求された期間をカバーしている場合
+                    if (startDate >= cachedStartDate && endDate <= cachedEndDate)
+                    {
+                        _logger.LogDebug($"シンボル {symbol} のメモリキャッシュデータを使用します (Using memory cached data for symbol {symbol})");
+                        
+                        // メモリキャッシュのデータをSQLiteにも保存
+                        var dataPoints = existingCachedData.Data.Select(d => new StockDataPoint
+                        {
+                            Date = d.DateTime,
+                            Open = d.Open,
+                            High = d.High,
+                            Low = d.Low,
+                            Close = d.Close,
+                            AdjClose = d.AdjClose,
+                            Volume = d.Volume
+                        }).ToList();
+                        
+                        await _stockDataCache.SaveStockDataAsync(symbol, dataPoints);
+                        
+                        return existingCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"キャッシュ確認中にエラーが発生しました: {ex.Message} (Error checking cache)");
+            }
+        }
+        else
+        {
+            _logger.LogDebug($"シンボル {symbol} の強制更新が指定されたため、キャッシュをスキップします (Force update specified for symbol {symbol}, skipping cache)");
+        }
 
+        try
+        {
             // 新しい日付範囲を計算
             DateTime newStartDate = startDate;
             DateTime newEndDate = endDate;
 
-            if (cachedData != null && cachedData.Data.Count > 0)
+            if (_dataCache.TryGetValue(symbol, out var existingCachedData) && existingCachedData.Data.Count > 0)
             {
-                var cachedStartDate = cachedData.Data.Min(d => d.DateTime);
-                var cachedEndDate = cachedData.Data.Max(d => d.DateTime);
+                var cachedStartDate = existingCachedData.Data.Min(d => d.DateTime);
+                var cachedEndDate = existingCachedData.Data.Max(d => d.DateTime);
 
                 // キャッシュされたデータと重複する部分を避ける
                 if (startDate < cachedStartDate && endDate >= cachedStartDate)
@@ -237,9 +255,9 @@ public class StockDataService : IStockDataService
                 RecordNoDataPeriod(symbol, newStartDate, newEndDate);
                 
                 // キャッシュされたデータを返す（あれば）
-                if (cachedData != null)
+                if (_dataCache.TryGetValue(symbol, out var currentCachedData) && currentCachedData != null)
                 {
-                    return cachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                    return currentCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
                 }
                 return new List<StockData>();
             }
@@ -257,9 +275,9 @@ public class StockDataService : IStockDataService
                 RecordNoDataPeriod(symbol, newStartDate, newEndDate);
                 
                 // キャッシュされたデータを返す（あれば）
-                if (cachedData != null)
+                if (_dataCache.TryGetValue(symbol, out var currentCachedData) && currentCachedData != null)
                 {
-                    return cachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                    return currentCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
                 }
                 return new List<StockData>();
             }
@@ -279,9 +297,9 @@ public class StockDataService : IStockDataService
             await _stockDataCache.SaveStockDataAsync(symbol, newDataPoints);
 
             // メモリキャッシュを更新
-            if (cachedData != null)
+            if (_dataCache.TryGetValue(symbol, out var finalCachedData) && finalCachedData != null)
             {
-                var combinedData = cachedData.Data.Concat(newData).DistinctBy(d => d.DateTime).ToList();
+                var combinedData = finalCachedData.Data.Concat(newData).DistinctBy(d => d.DateTime).ToList();
                 _dataCache[symbol] = new SymbolCacheData { Data = combinedData };
                 
                 return combinedData.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
@@ -296,9 +314,9 @@ public class StockDataService : IStockDataService
         {
             _logger.LogError(ex, $"シンボル {symbol} のデータ取得中にエラーが発生しました (Error fetching data for symbol {symbol})");
             
-            if (_dataCache.TryGetValue(symbol, out var cachedData) && cachedData != null)
+            if (_dataCache.TryGetValue(symbol, out var currentCachedData) && currentCachedData != null)
             {
-                return cachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                return currentCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
             }
             
             throw;

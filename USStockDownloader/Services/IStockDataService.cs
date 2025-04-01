@@ -4,7 +4,7 @@ namespace USStockDownloader.Services;
 
 public interface IStockDataService
 {
-    Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate);
+    Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate, bool forceUpdate = false);
     
     /// <summary>
     /// 指定された日付範囲に営業日があるかどうかを確認します
