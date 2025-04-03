@@ -135,15 +135,147 @@ namespace USStockDownloader.Services
             var normalizedStartDate = startDate.Date;
             var normalizedEndDate = endDate.Date;
             
-            for (var date = normalizedStartDate; date <= normalizedEndDate; date = date.AddDays(1))
+            try
             {
-                if (await CheckTradingDayExistsAsync(date))
+                // チェックを最適化：最初に月単位で前処理
+                var currentMonth = new DateTime(normalizedStartDate.Year, normalizedStartDate.Month, 1);
+                var endMonth = new DateTime(normalizedEndDate.Year, normalizedEndDate.Month, 1);
+                
+                while (currentMonth <= endMonth)
                 {
-                    return true;
+                    var yearMonthKey = GetYearMonthKey(currentMonth);
+                    bool isCacheExpired = await IsCacheExpiredAsync(yearMonthKey);
+                    
+                    if (isCacheExpired)
+                    {
+                        _logger.LogDebug("{Year}年{Month}月のキャッシュが期限切れまたは存在しないため一括更新します (Updating cache for month as it is expired or does not exist)",
+                            currentMonth.Year, currentMonth.Month);
+                        
+                        try
+                        {
+                            await UpdateTradingDaysForMonthAsync(currentMonth);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "{Year}年{Month}月の取引日データの更新中にエラーが発生しましたが、処理を続行します (Error updating trading days for month, continuing anyway)",
+                                currentMonth.Year, currentMonth.Month);
+                        }
+                    }
+                    
+                    currentMonth = currentMonth.AddMonths(1);
                 }
+                
+                // 日付範囲が単一日かつ平日(月〜金)の場合は ^DJI の時系列データを直接確認
+                if (normalizedStartDate == normalizedEndDate && 
+                    normalizedStartDate.DayOfWeek != DayOfWeek.Saturday && 
+                    normalizedStartDate.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    // 今日または昨日の平日は通常取引日として扱う（短縮取引やホリデーを除く）
+                    var today = DateTime.Now.Date;
+                    if (normalizedStartDate == today || normalizedStartDate == today.AddDays(-1))
+                    {
+                        _logger.LogDebug("今日または昨日の日付 ({Date}) は平日のため、取引日として扱います (Date is a weekday and today/yesterday, treating as trading day)",
+                            normalizedStartDate.ToString("yyyy-MM-dd"));
+                        return true;
+                    }
+                    
+                    // ^DJI の時系列データが存在するか確認
+                    try
+                    {
+                        // まず指定日付が取引日データとして既に保存されているか確認
+                        var existingYearMonth = GetYearMonthKey(normalizedStartDate);
+                        using var checkConnection = new SqliteConnection(_connectionString);
+                        await checkConnection.OpenAsync();
+                        
+                        using var checkCommand = checkConnection.CreateCommand();
+                        checkCommand.CommandText = "SELECT COUNT(*) FROM TradingDays WHERE YearMonth = @YearMonth AND Day = @Day";
+                        checkCommand.Parameters.AddWithValue("@YearMonth", existingYearMonth);
+                        checkCommand.Parameters.AddWithValue("@Day", normalizedStartDate.Day);
+                        
+                        var count_dji = Convert.ToInt32(await checkCommand.ExecuteScalarAsync());
+                        if (count_dji > 0)
+                        {
+                            _logger.LogDebug("日付 {Date} は取引日データに存在します (Date exists in trading days data)",
+                                normalizedStartDate.ToString("yyyy-MM-dd"));
+                            return true;
+                        }
+                        
+                        // APIから直接データを取得して確認
+                        _logger.LogDebug("日付 {Date} の取引日データを^DJIから確認します (Checking trading day data for date directly from ^DJI)",
+                            normalizedStartDate.ToString("yyyy-MM-dd"));
+                            
+                        var httpClient = new HttpClient();
+                        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
+                        httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+                        httpClient.DefaultRequestHeaders.Add("Referer", "https://finance.yahoo.com/");
+                        
+                        // 指定日の終値を取得（日付をUNIXタイムスタンプに変換）
+                        var startUnixTime = ToUnixTimestamp(normalizedStartDate);
+                        var endUnixTime = ToUnixTimestamp(normalizedStartDate.AddDays(1).AddSeconds(-1)); // 同日の終わりまで
+                        
+                        var url = $"https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?period1={startUnixTime}&period2={endUnixTime}&interval=1d";
+                        var response = await httpClient.GetAsync(url);
+                        
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var content = await response.Content.ReadAsStringAsync();
+                            using var doc = JsonDocument.Parse(content);
+                            
+                            if (doc.RootElement.TryGetProperty("chart", out var chart) &&
+                                chart.TryGetProperty("result", out var results) &&
+                                results.GetArrayLength() > 0 &&
+                                results[0].TryGetProperty("timestamp", out var timestamps) &&
+                                timestamps.GetArrayLength() > 0)
+                            {
+                                // タイムスタンプが存在する = 取引日である
+                                _logger.LogDebug("日付 {Date} は^DJIのデータにタイムスタンプが存在するため、取引日です (Date is a trading day as timestamp exists in ^DJI data)",
+                                    normalizedStartDate.ToString("yyyy-MM-dd"));
+                                    
+                                // DBに保存して次回から使えるようにする
+                                var tradingDays = new List<DateTime> { normalizedStartDate };
+                                await InsertTradingDaysBatchAsync(existingYearMonth, tradingDays);
+                                
+                                return true;
+                            }
+                        }
+                        
+                        _logger.LogDebug("日付 {Date} は^DJIのデータに存在しないため、取引日ではありません (Date is not a trading day as it doesn't exist in ^DJI data)",
+                            normalizedStartDate.ToString("yyyy-MM-dd"));
+                            
+                        return false;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "日付 {Date} の^DJIデータ取得中にエラーが発生しました。平日なのでtrue返します (Error checking ^DJI data for date, returning true as it's a weekday)",
+                            normalizedStartDate.ToString("yyyy-MM-dd"));
+                        
+                        // エラーが発生した場合は平日なのでtrueを返す
+                        return true;
+                    }
+                }
+                
+                // データベースから直接範囲検索（日付単位の繰り返し処理を避ける）
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+                    SELECT COUNT(*) FROM TradingDays 
+                    WHERE (YearMonth || '-' || Day) >= @StartDate AND (YearMonth || '-' || Day) <= @EndDate";
+                command.Parameters.AddWithValue("@StartDate", normalizedStartDate.ToString("yyyy-MM-dd"));
+                command.Parameters.AddWithValue("@EndDate", normalizedEndDate.ToString("yyyy-MM-dd"));
+                
+                var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+                return count > 0;
             }
-            
-            return false;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "日付範囲 {StartDate} から {EndDate} の取引日チェック中にエラーが発生しました。セーフティとしてtrueを返します。 (Error during trading day range check, returning true as safety)",
+                    normalizedStartDate.ToString("yyyy-MM-dd"), normalizedEndDate.ToString("yyyy-MM-dd"));
+                
+                // エラー時はセーフティとしてtrueを返す（データ取得を試みる）
+                return true;
+            }
         }
 
         /// <summary>
@@ -363,6 +495,18 @@ namespace USStockDownloader.Services
         /// <returns>期限切れの場合はtrue</returns>
         private async Task<bool> IsCacheExpiredAsync(string yearMonthKey)
         {
+            // 現在の月または最近の月は常に最新データが必要なため、キャッシュが期限切れとみなす
+            var currentMonth = $"{DateTime.Now.Year}-{DateTime.Now.Month:D2}";
+            var previousMonth = DateTime.Now.AddMonths(-1);
+            var prevMonthKey = $"{previousMonth.Year}-{previousMonth.Month:D2}";
+            
+            if (yearMonthKey == currentMonth || yearMonthKey == prevMonthKey)
+            {
+                _logger.LogDebug("年月キー {YearMonth} は現在または先月のため、キャッシュを更新します (YearMonth is current or previous month, updating cache)",
+                    yearMonthKey);
+                return true;
+            }
+            
             using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync();
             
@@ -533,43 +677,85 @@ namespace USStockDownloader.Services
             
             try
             {
-                using (var deleteCommand = connection.CreateCommand())
+                // 既存のデータを削除する前に、挿入する日付と重複するエントリを確認
+                var existingDays = new HashSet<int>();
+                using (var checkCommand = connection.CreateCommand())
                 {
-                    deleteCommand.Transaction = transaction;
-                    deleteCommand.CommandText = "DELETE FROM TradingDays WHERE YearMonth = @YearMonth";
-                    deleteCommand.Parameters.AddWithValue("@YearMonth", yearMonthKey);
-                    await deleteCommand.ExecuteNonQueryAsync();
+                    checkCommand.Transaction = transaction;
+                    checkCommand.CommandText = "SELECT Day FROM TradingDays WHERE YearMonth = @YearMonth";
+                    checkCommand.Parameters.AddWithValue("@YearMonth", yearMonthKey);
+                    
+                    using var reader = await checkCommand.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        existingDays.Add(reader.GetInt32(0));
+                    }
                 }
                 
-                var insertSql = new System.Text.StringBuilder();
-                insertSql.Append("INSERT INTO TradingDays (YearMonth, Day) VALUES ");
-                
-                var parameterNames = new List<string>();
-                for (int i = 0; i < tradingDays.Count; i++)
+                // 既存データの有無に基づいて処理を分岐
+                if (existingDays.Count > 0)
                 {
-                    var paramYearMonth = $"@YearMonth{i}";
-                    var paramDay = $"@Day{i}";
-                    insertSql.Append(i > 0 ? ", " : "");
-                    insertSql.Append($"({paramYearMonth}, {paramDay})");
-                    parameterNames.Add(paramYearMonth);
-                    parameterNames.Add(paramDay);
+                    _logger.LogDebug("{YearMonth}には既に{Count}日の取引日データが存在します。重複しないデータのみ挿入します。 (Trading days already exist for {YearMonth}, inserting only new days)",
+                        yearMonthKey, existingDays.Count, yearMonthKey, existingDays.Count);
+                    
+                    // 重複しない日付だけをフィルタリング
+                    var newTradingDays = tradingDays.Where(d => !existingDays.Contains(d.Day)).ToList();
+                    
+                    if (newTradingDays.Count == 0)
+                    {
+                        _logger.LogDebug("{YearMonth}には新しい取引日データはありません。更新をスキップします。 (No new trading days for {YearMonth}, skipping update)",
+                            yearMonthKey, yearMonthKey);
+                        return;
+                    }
+                    
+                    // 個別に挿入クエリを実行（一括挿入ではなく）
+                    using var insertCommand = connection.CreateCommand();
+                    insertCommand.Transaction = transaction;
+                    insertCommand.CommandText = "INSERT OR IGNORE INTO TradingDays (YearMonth, Day) VALUES (@YearMonth, @Day)";
+                    var yearMonthParam = insertCommand.Parameters.Add("@YearMonth", SqliteType.Text);
+                    var dayParam = insertCommand.Parameters.Add("@Day", SqliteType.Integer);
+                    
+                    foreach (var day in newTradingDays)
+                    {
+                        yearMonthParam.Value = yearMonthKey;
+                        dayParam.Value = day.Day;
+                        await insertCommand.ExecuteNonQueryAsync();
+                    }
+                    
+                    await transaction.CommitAsync();
+                    _logger.LogDebug("{YearMonth}に{Count}件の新しい取引日データを追加しました (Added {Count} new trading days to {YearMonth})",
+                        yearMonthKey, newTradingDays.Count, newTradingDays.Count, yearMonthKey);
                 }
-                
-                using var command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText = insertSql.ToString();
-                
-                for (int i = 0; i < tradingDays.Count; i++)
+                else
                 {
-                    command.Parameters.AddWithValue($"@YearMonth{i}", yearMonthKey);
-                    command.Parameters.AddWithValue($"@Day{i}", tradingDays[i].Day);
+                    // 既存データがない場合は従来通り一括挿入
+                    using (var deleteCommand = connection.CreateCommand())
+                    {
+                        deleteCommand.Transaction = transaction;
+                        deleteCommand.CommandText = "DELETE FROM TradingDays WHERE YearMonth = @YearMonth";
+                        deleteCommand.Parameters.AddWithValue("@YearMonth", yearMonthKey);
+                        await deleteCommand.ExecuteNonQueryAsync();
+                    }
+                    
+                    // 一括挿入ではなく同じINSERT OR IGNOREメソッドを使用
+                    using var insertCommand = connection.CreateCommand();
+                    insertCommand.Transaction = transaction;
+                    insertCommand.CommandText = "INSERT OR IGNORE INTO TradingDays (YearMonth, Day) VALUES (@YearMonth, @Day)";
+                    var yearMonthParam = insertCommand.Parameters.Add("@YearMonth", SqliteType.Text);
+                    var dayParam = insertCommand.Parameters.Add("@Day", SqliteType.Integer);
+                    
+                    foreach (var day in tradingDays)
+                    {
+                        yearMonthParam.Value = yearMonthKey;
+                        dayParam.Value = day.Day;
+                        await insertCommand.ExecuteNonQueryAsync();
+                    }
+                    
+                    await transaction.CommitAsync();
+                    
+                    _logger.LogDebug("{Count}件の取引日データを{YearMonth}に一括挿入しました (Bulk inserted {Count} trading days for {YearMonth})",
+                        tradingDays.Count, yearMonthKey, tradingDays.Count, yearMonthKey);
                 }
-                
-                await command.ExecuteNonQueryAsync();
-                await transaction.CommitAsync();
-                
-                _logger.LogDebug("{Count}件の取引日データを{YearMonth}に一括挿入しました (Bulk inserted {Count} trading days for {YearMonth})",
-                    tradingDays.Count, yearMonthKey, tradingDays.Count, yearMonthKey);
             }
             catch (Exception ex)
             {

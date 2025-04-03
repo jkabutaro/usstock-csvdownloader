@@ -188,6 +188,27 @@ namespace USStockDownloader.Utils
             }
         }
 
+        /// <summary>
+        /// 指定された日付の翌営業日を返します。
+        /// </summary>
+        /// <param name="date">基準日</param>
+        /// <returns>翌営業日</returns>
+        public static DateTime GetNextTradingDay(DateTime date)
+        {
+            var nextDay = date.AddDays(1);
+
+            while (true)
+            {
+                if (!IsUsHoliday(nextDay) &&
+                    nextDay.DayOfWeek != DayOfWeek.Saturday &&
+                    nextDay.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    return nextDay.Date;
+                }
+                nextDay = nextDay.AddDays(1);
+            }
+        }
+
         public static DateTime GetLastTradingDay()
         {
             var now = ConvertToEasternTime(DateTime.Now);
@@ -301,12 +322,39 @@ namespace USStockDownloader.Utils
                         return true;
                     }
                     
-                    if (startDate < info.StartDate || adjustedEndDate > info.EndDate)
+                    // 既存のキャッシュの日付範囲の確認
+                    DateTime cacheStartDate = info.StartDate;
+                    DateTime cacheEndDate = info.EndDate;
+                    
+                    // リクエストがキャッシュの範囲内に完全に含まれる場合
+                    if (startDate >= cacheStartDate && adjustedEndDate <= cacheEndDate)
                     {
+                        _logger.LogDebug($"銘柄 {symbol}: リクエストがキャッシュの範囲内に完全に含まれています。キャッシュを使用します (Symbol {symbol}: Request completely within cache range, using cache)");
+                        return false;
+                    }
+                    
+                    // 部分的なキャッシュが存在する場合のインクリメンタルダウンロード処理
+                    if (startDate < cacheStartDate && adjustedEndDate > cacheEndDate)
+                    {
+                        // 要求が両端で範囲外の場合 - 両端分をダウンロードする必要あり
+                        _logger.LogDebug($"銘柄 {symbol}: リクエストがキャッシュの両端を超えています。更新が必要です (Symbol {symbol}: Request exceeds cache range on both ends, update required)");
+                        _logger.LogDebug($"  リクエスト: {startDate:yyyy-MM-dd} ～ {adjustedEndDate:yyyy-MM-dd}, キャッシュ: {cacheStartDate:yyyy-MM-dd} ～ {cacheEndDate:yyyy-MM-dd} (Request: {startDate:yyyy-MM-dd} to {adjustedEndDate:yyyy-MM-dd}, Cache: {cacheStartDate:yyyy-MM-dd} to {cacheEndDate:yyyy-MM-dd})");
+                        return true;
+                    }
+                    else if (startDate < cacheStartDate)
+                    {
+                        // 開始日のみ範囲外の場合 - 過去データ分をダウンロードする必要あり
+                        _logger.LogDebug($"銘柄 {symbol}: リクエスト開始日がキャッシュ範囲前です。過去データの更新が必要です (Symbol {symbol}: Request start date before cache range, historical update required)");
+                        _logger.LogDebug($"  リクエスト開始日: {startDate:yyyy-MM-dd}, キャッシュ開始日: {cacheStartDate:yyyy-MM-dd} (Request start: {startDate:yyyy-MM-dd}, Cache start: {cacheStartDate:yyyy-MM-dd})");
+                        return true;
+                    }
+                    else if (adjustedEndDate > cacheEndDate)
+                    {
+                        // 終了日のみ範囲外の場合 - 新規データ分をダウンロードする必要あり
+                        
                         // 特別なケース: リクエストの終了日が現在日付で、キャッシュの終了日が前日（最新取引日）である場合
                         bool isSpecialCase = adjustedEndDate.Date == DateTime.Now.Date && 
-                                            info.EndDate.Date == lastTradingDay.Date && 
-                                            startDate >= info.StartDate;
+                                            cacheEndDate.Date == lastTradingDay.Date;
                         
                         if (isSpecialCase)
                         {
@@ -314,8 +362,8 @@ namespace USStockDownloader.Utils
                             return false;
                         }
                         
-                        _logger.LogDebug($"銘柄 {symbol}: リクエストされた日付範囲がキャッシュの範囲外のため更新が必要です (Symbol {symbol}: Requested date range is outside cache range, update required)");
-                        _logger.LogDebug($"  リクエスト: {startDate:yyyy-MM-dd} ～ {adjustedEndDate:yyyy-MM-dd}, キャッシュ: {info.StartDate:yyyy-MM-dd} ～ {info.EndDate:yyyy-MM-dd} (Request: {startDate:yyyy-MM-dd} to {adjustedEndDate:yyyy-MM-dd}, Cache: {info.StartDate:yyyy-MM-dd} to {info.EndDate:yyyy-MM-dd})");
+                        _logger.LogDebug($"銘柄 {symbol}: リクエスト終了日がキャッシュ範囲後です。新規データの更新が必要です (Symbol {symbol}: Request end date after cache range, new data update required)");
+                        _logger.LogDebug($"  リクエスト終了日: {adjustedEndDate:yyyy-MM-dd}, キャッシュ終了日: {cacheEndDate:yyyy-MM-dd} (Request end: {adjustedEndDate:yyyy-MM-dd}, Cache end: {cacheEndDate:yyyy-MM-dd})");
                         return true;
                     }
 

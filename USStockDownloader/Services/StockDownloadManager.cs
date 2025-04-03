@@ -20,6 +20,7 @@ public class StockDownloadManager
     private static readonly Random _random = new Random();
     private readonly ConcurrentDictionary<string, string> _failedSymbols = new ConcurrentDictionary<string, string>();
     private readonly int _maxConcurrentDownloads;
+    private readonly bool _forceUpdate;
     
     // 進捗表示用のフィールド
     private int _totalSymbols;
@@ -34,10 +35,16 @@ public class StockDownloadManager
         _stockDataService = stockDataService;
         _logger = logger;
         _maxConcurrentDownloads = options.MaxConcurrentDownloads;
+        _forceUpdate = options.ForceUpdate;
         _semaphore = new SemaphoreSlim(_maxConcurrentDownloads);
         
         _logger.LogDebug("並列ダウンロード数を{MaxConcurrent}に設定しました (Set concurrent downloads to {MaxConcurrent})", 
             _maxConcurrentDownloads, _maxConcurrentDownloads);
+        
+        if (_forceUpdate)
+        {
+            _logger.LogWarning("強制更新モードが有効です。キャッシュをスキップします。 (Force update mode enabled. Skipping cache.)");
+        }
     }
 
     /// <summary>
@@ -441,25 +448,26 @@ public class StockDownloadManager
             _logger.LogDebug("銘柄{Symbol}の種類: {SymbolType} (Symbol type)", 
                 symbol, isIndexSymbol ? "インデックス銘柄 (Index symbol)" : "通常銘柄 (Regular symbol)");
             
-            // 市場が閉じている場合の処理用
+            // 市場の開閉状態を確認（キャッシュの日付判定に使用）
             bool isMarketClosed = StockDataCache.IsMarketClosed();
-            bool forceUpdate = isMarketClosed && !isIndexSymbol;
+            
+            // forceUpdateフラグはDownloadOptionsのForceUpdateフラグのみに依存する
+            // （ProcessSymbolAsync内でインスタンス変数_forceUpdateを参照）
             
             _logger.LogDebug("市場状態: {MarketStatus}, 銘柄タイプ: {SymbolType} (Market status, Symbol type)",
                 isMarketClosed ? "閉鎖中 (Closed)" : "開場中 (Open)",
                 isIndexSymbol ? "インデックス銘柄 (Index symbol)" : "通常銘柄 (Regular symbol)");
             
             // キャッシュが有効でかつファイルが存在する場合のみキャッシュを使用
-            // ただし、市場が閉じていて通常銘柄の場合は強制更新する
-            if (!forceUpdate && !StockDataCache.NeedsUpdate(symbol, startDate, endDate, TimeSpan.FromHours(12)) && fileExists)
+            if (!_forceUpdate && !StockDataCache.NeedsUpdate(symbol, startDate, endDate, TimeSpan.FromHours(12)) && fileExists)
             {
                 _logger.LogDebug("銘柄{Symbol}のキャッシュデータを使用します (Using cached data)", symbol);
                 return;
             }
             
-            if (isMarketClosed && !isIndexSymbol)
+            if (_forceUpdate)
             {
-                _logger.LogDebug("市場は閉じていますが、銘柄{Symbol}の更新を続行します (Market is closed but continuing update for symbol)", symbol);
+                _logger.LogDebug("銘柄{Symbol}は強制更新モードが有効のため、キャッシュをスキップします (Skipping cache for symbol due to force update mode)", symbol);
             }
 
             _logger.LogDebug("銘柄{Symbol}のHTTPリクエスト準備中 (Preparing HTTP request for symbol)", symbol);
@@ -473,7 +481,7 @@ label_retry:
             _logger.LogDebug("銘柄{Symbol}のHTTPリクエスト実行前 (Before HTTP request for symbol)", symbol);
 
             // キャッシュが無効またはファイルが存在しない場合はダウンロード
-            var stockDataList = await _stockDataService.GetStockDataAsync(requestSymbol, startDate, endDate, forceUpdate);
+            var stockDataList = await _stockDataService.GetStockDataAsync(requestSymbol, startDate, endDate, _forceUpdate);
 
             _logger.LogDebug("銘柄{Symbol}のHTTPリクエスト実行後、取得データ件数: {Count}件 (After HTTP request, data count)",
                 symbol, stockDataList.Count);
@@ -491,12 +499,12 @@ label_retry:
                     // 前半期間のデータを取得
                     _logger.LogDebug("銘柄{Symbol}の前半期間 {StartDate} - {MidDate} のデータを取得中... (Fetching first half data)", 
                         symbol, startDate.ToString("yyyy-MM-dd"), midDate.ToString("yyyy-MM-dd"));
-                    var firstHalfData = await _stockDataService.GetStockDataAsync(requestSymbol, startDate, midDate, forceUpdate);
+                    var firstHalfData = await _stockDataService.GetStockDataAsync(requestSymbol, startDate, midDate, _forceUpdate);
                     
                     // 後半期間のデータを取得
                     _logger.LogDebug("銘柄{Symbol}の後半期間 {MidDate} - {EndDate} のデータを取得中... (Fetching second half data)", 
                         symbol, midDate.AddDays(1).ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
-                    var secondHalfData = await _stockDataService.GetStockDataAsync(requestSymbol, midDate.AddDays(1), endDate, forceUpdate);
+                    var secondHalfData = await _stockDataService.GetStockDataAsync(requestSymbol, midDate.AddDays(1), endDate, _forceUpdate);
                     
                     // データを結合
                     stockDataList = firstHalfData.Concat(secondHalfData).ToList();

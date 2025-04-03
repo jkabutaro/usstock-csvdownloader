@@ -20,6 +20,18 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace USStockDownloader.Services;
 
+/// <summary>
+/// データ取得の目的を指定する列挙型
+/// </summary>
+public enum DataRetrievalPurpose
+{
+    /// <summary>通常のデータ取得</summary>
+    Normal,
+    
+    /// <summary>取引日カレンダー更新用</summary>
+    CalendarUpdate
+}
+
 public class StockDataService : IStockDataService
 {
     private readonly HttpClient _httpClient;
@@ -30,6 +42,9 @@ public class StockDataService : IStockDataService
     private readonly ITradingDayCacheService _tradingDayCache;
     private readonly AsyncRetryPolicy<List<StockData>> _retryPolicy;
     private readonly RetryOptions _retryOptions;
+    
+    // 取引日カレンダーサービス
+    private TradingDayCalendarService? _tradingDayCalendar;
 
     // 上場廃止された銘柄を追跡するためのセット
     private readonly HashSet<string> _delistedSymbols = new HashSet<string>();
@@ -52,6 +67,21 @@ public class StockDataService : IStockDataService
             Start = start;
             End = end;
         }
+
+        public bool Contains(DateTime date)
+        {
+            return date >= Start && date <= End;
+        }
+
+        public bool Overlaps(DateRange other)
+        {
+            return (Start <= other.End && End >= other.Start);
+        }
+
+        public override string ToString()
+        {
+            return $"{Start:yyyy-MM-dd} to {End:yyyy-MM-dd}";
+        }
     }
 
     // キャッシュデータクラスを拡張
@@ -59,6 +89,7 @@ public class StockDataService : IStockDataService
     {
         public List<StockData> Data { get; set; } = new List<StockData>();
         public List<DateRange> NoDataPeriods { get; set; } = new List<DateRange>();
+        public DateTime LastUpdateTime { get; set; } = DateTime.Now;
     }
 
     public StockDataService(
@@ -117,211 +148,488 @@ public class StockDataService : IStockDataService
             _logger.LogDebug("キャッシュディレクトリを作成しました (Created cache directory): {CacheDir}", _cacheDirPath);
         }
         
-        //// 既存のJSONファイルからデータをインポート（初回のみ）
-        //Task.Run(async () => await MigrateFromJsonIfNeededAsync()).ConfigureAwait(false);
+        // 取引日カレンダーサービスを初期化（遅延初期化）
+        InitializeTradingDayCalendarService();
+    }
+    
+    /// <summary>
+    /// 取引日カレンダーサービスを初期化します（遅延初期化）
+    /// </summary>
+    private void InitializeTradingDayCalendarService()
+    {
+        // 循環参照を避けるため、TradingDayCalendarServiceの初期化はプロパティで遅延して行う
+        if (_tradingDayCalendar == null)
+        {
+            var calendarLogger = AppLoggerFactory.CreateLogger<TradingDayCalendarService>();
+            _tradingDayCalendar = new TradingDayCalendarService(calendarLogger, this);
+            
+            // 過去3年のデータを事前に取得してカレンダーを初期化
+            var endDate = DateTime.Today;
+            var startDate = endDate.AddYears(-3);
+            
+            // 非同期での初期化（完了を待たない）
+            Task.Run(async () => {
+                try
+                {
+                    await _tradingDayCalendar.UpdateCalendarAsync(startDate, endDate, false, true);
+                    _logger.LogDebug("取引日カレンダーの初期化が完了しました: 期間 {StartDate} ～ {EndDate} (Trading day calendar initialized)",
+                        startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "取引日カレンダーの初期化中にエラーが発生しました (Error initializing trading day calendar)");
+                }
+            });
+        }
     }
 
-    ///// <summary>
-    ///// 既存のJSONファイルからSQLiteデータベースにデータを移行します（必要な場合のみ）
-    ///// </summary>
-    //private async Task MigrateFromJsonIfNeededAsync()
-    //{
-    //    var stockDataDir = Path.Combine(_cacheDirPath, "output");
-    //    if (Directory.Exists(stockDataDir) && Directory.GetFiles(stockDataDir, "*.json").Length > 0)
-    //    {
-    //        _logger.LogDebug("既存のJSONファイルからSQLiteデータベースへの移行を開始します (Starting migration from JSON files to SQLite database)");
-    //        await _stockDataCache.ImportFromJsonFilesAsync(_cacheDirPath);
-    //    }
-    //}
-
-    public async Task<List<StockData>> GetStockDataAsync(string symbol, DateTime startDate, DateTime endDate, bool forceUpdate = false)
+    /// <summary>
+    /// 指定された銘柄と日付範囲の株価データを取得します。
+    /// キャッシュから利用可能なデータを最大限に活用し、不足部分のみをYahoo Financeから取得します。
+    /// </summary>
+    /// <param name="symbol">銘柄シンボル</param>
+    /// <param name="startDate">開始日</param>
+    /// <param name="endDate">終了日</param>
+    /// <param name="forceUpdate">強制更新フラグ</param>
+    /// <param name="purpose">データ取得の目的</param>
+    /// <returns>株価データのリスト</returns>
+    public async Task<List<StockData>> GetStockDataAsync(
+        string symbol, 
+        DateTime startDate, 
+        DateTime endDate, 
+        bool forceUpdate = false,
+        DataRetrievalPurpose purpose = DataRetrievalPurpose.Normal)
     {
-        _logger.LogDebug("GetStockDataAsync開始: 銘柄={Symbol}, 開始日={StartDate}, 終了日={EndDate}, 強制更新={ForceUpdate} (Starting GetStockDataAsync: Symbol, StartDate, EndDate, ForceUpdate)",
-            symbol, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), forceUpdate);
-        
+        _logger.LogDebug($"GetStockDataAsync開始: 銘柄={symbol}, 開始日={startDate:yyyy-MM-dd}, 終了日={endDate:yyyy-MM-dd}, 強制更新={forceUpdate} (Starting GetStockDataAsync)");
+
+        // 日付の正規化（時刻情報を削除）
+        startDate = startDate.Date;
+        endDate = endDate.Date;
+
+        // 上場廃止チェック
         if (_delistedSymbols.Contains(symbol))
         {
-            _logger.LogWarning($"シンボル {symbol} は上場廃止されているためスキップします (Symbol {symbol} is delisted, skipping)");
+            _logger.LogWarning($"シンボル {symbol} は上場廃止されているためスキップします (Symbol is delisted, skipping)");
             return new List<StockData>();
         }
 
         // データが存在しない期間のチェック
         if (IsInNoDataPeriod(symbol, startDate, endDate))
         {
-            _logger.LogDebug($"シンボル {symbol} の期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} はデータが存在しないことが既知です (No data exists for symbol {symbol} from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd})");
+            _logger.LogDebug($"シンボル {symbol} の期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} はデータが存在しないことが既知です (No data exists for this period)");
             return new List<StockData>();
         }
-
-        // forceUpdateがtrueの場合は、キャッシュをスキップして常に最新データを取得
-        if (!forceUpdate)
+        
+        // ^DJIの場合は特別扱い - 取引日カレンダーに使用されるので、最新データを取得する必要があるかチェック
+        if (symbol == "^DJI")
         {
-            try
+            _logger.LogDebug("^DJIのデータは取引日カレンダーに使用されるため、特別処理を適用します (Special handling for ^DJI as it is used for trading day calendar)");
+            // 取引日カレンダーサービスを初期化
+            InitializeTradingDayCalendarService();
+            
+            // 取引日カレンダーを更新（カレンダーサービス内でキャッシュ判断）
+            if (_tradingDayCalendar != null)
             {
-                // SQLiteキャッシュからデータを取得
-                var stockDataPoints = await _stockDataCache.GetStockDataAsync(symbol, startDate, endDate);
-                int count = stockDataPoints.Count();
-                if (count > 0)
-                {
-                    _logger.LogDebug($"シンボル {symbol} のSQLiteキャッシュデータを使用します: {count}件 (Using SQLite cached data for symbol {symbol}: {count} items)",
-                        symbol, count);
-                    
-                    // StockDataPointからStockDataへの変換
-                    var stockData = stockDataPoints.Select(p => new StockData
-                    {
-                        Symbol = symbol,
-                        DateTime = p.Date,
-                        Date = p.Date.Year * 10000 + p.Date.Month * 100 + p.Date.Day,
-                        Open = p.Open,
-                        High = p.High,
-                        Low = p.Low,
-                        Close = p.Close,
-                        AdjClose = p.AdjClose,
-                        Volume = p.Volume
-                    }).ToList();
-                    
-                    // メモリキャッシュも更新
-                    _dataCache[symbol] = new SymbolCacheData { Data = stockData };
-                    
-                    return stockData;
-                }
-
-                // メモリキャッシュをチェック（移行期間中の互換性のため）
-                if (_dataCache.TryGetValue(symbol, out var existingCachedData) && existingCachedData.Data.Count > 0)
-                {
-                    var cachedStartDate = existingCachedData.Data.Min(d => d.DateTime);
-                    var cachedEndDate = existingCachedData.Data.Max(d => d.DateTime);
-
-                    // キャッシュが要求された期間をカバーしている場合
-                    if (startDate >= cachedStartDate && endDate <= cachedEndDate)
-                    {
-                        _logger.LogDebug($"シンボル {symbol} のメモリキャッシュデータを使用します (Using memory cached data for symbol {symbol})");
-                        
-                        // メモリキャッシュのデータをSQLiteにも保存
-                        var dataPoints = existingCachedData.Data.Select(d => new StockDataPoint
-                        {
-                            Date = d.DateTime,
-                            Open = d.Open,
-                            High = d.High,
-                            Low = d.Low,
-                            Close = d.Close,
-                            AdjClose = d.AdjClose,
-                            Volume = d.Volume
-                        }).ToList();
-                        
-                        await _stockDataCache.SaveStockDataAsync(symbol, dataPoints);
-                        
-                        return existingCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning($"キャッシュ確認中にエラーが発生しました: {ex.Message} (Error checking cache)");
+                await _tradingDayCalendar.UpdateCalendarAsync(startDate, endDate, forceUpdate);
             }
         }
         else
         {
-            _logger.LogDebug($"シンボル {symbol} の強制更新が指定されたため、キャッシュをスキップします (Force update specified for symbol {symbol}, skipping cache)");
+            // ^DJI以外の場合は取引日カレンダーを確認
+            if (_tradingDayCalendar != null)
+            {
+                // カレンダーが範囲をカバーしていない場合は更新（カレンダーサービス内でキャッシュ判断）
+                bool calendarUpdate = await _tradingDayCalendar.UpdateCalendarAsync(startDate, endDate);
+                
+                // カレンダー更新に失敗した場合はログに記録（処理は続行）
+                if (!calendarUpdate)
+                {
+                    _logger.LogWarning("取引日カレンダーの更新に失敗しました。取引日のフィルタリングが正確でない可能性があります (Failed to update trading day calendar)");
+                }
+                
+                // 指定期間に取引日がない場合は空のリストを返す
+                if (!_tradingDayCalendar.HasTradingDays(startDate, endDate))
+                {
+                    _logger.LogDebug($"シンボル {symbol} の期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} に取引日がないため、空のデータを返します (No trading days in period, returning empty data)");
+                    return new List<StockData>();
+                }
+            }
         }
 
-        try
+        // 最終的に返すデータのリスト
+        List<StockData> resultData = new List<StockData>();
+        
+        // 取得が必要な日付範囲のリスト
+        List<DateRange> requiredRanges = new List<DateRange>();
+
+        // 強制更新が指定されていない場合、キャッシュをチェック
+        if (!forceUpdate)
         {
-            // 新しい日付範囲を計算
-            DateTime newStartDate = startDate;
-            DateTime newEndDate = endDate;
-
-            if (_dataCache.TryGetValue(symbol, out var existingCachedData) && existingCachedData.Data.Count > 0)
+            try
             {
-                var cachedStartDate = existingCachedData.Data.Min(d => d.DateTime);
-                var cachedEndDate = existingCachedData.Data.Max(d => d.DateTime);
-
-                // キャッシュされたデータと重複する部分を避ける
-                if (startDate < cachedStartDate && endDate >= cachedStartDate)
+                // まずSQLiteキャッシュをチェック
+                var cachedData = await GetDataFromCacheAsync(symbol, startDate, endDate);
+                
+                if (cachedData.Any())
                 {
-                    newEndDate = cachedStartDate.AddDays(-1);
+                    _logger.LogDebug($"シンボル {symbol} のキャッシュデータを取得しました: {cachedData.Count}件 (Retrieved cached data)");
+                    
+                    // 見つかったデータを結果リストに追加
+                    resultData.AddRange(cachedData);
+                    
+                    // キャッシュにある日付範囲を見つける
+                    var cachedDates = new HashSet<DateTime>(cachedData.Select(d => d.DateTime.Date));
+                    
+                    // 欠けている日付範囲を特定（取引日カレンダーを使用）
+                    requiredRanges = FindMissingDateRanges(startDate, endDate, cachedDates);
+                    
+                    if (requiredRanges.Count == 0)
+                    {
+                        _logger.LogDebug($"シンボル {symbol} の要求された期間のデータは全てキャッシュにあります (All requested data in cache)");
+                        // ソートして返却
+                        return resultData.OrderBy(d => d.DateTime).ToList();
+                    }
+                    
+                    _logger.LogDebug($"シンボル {symbol} の欠けているデータ範囲: {requiredRanges.Count}件 (Missing date ranges)");
+                    foreach (var range in requiredRanges)
+                    {
+                        _logger.LogDebug($"欠けている範囲: {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} (Missing range)");
+                    }
                 }
-                else if (startDate <= cachedEndDate && endDate > cachedEndDate)
+                else
                 {
-                    newStartDate = cachedEndDate.AddDays(1);
+                    _logger.LogDebug($"シンボル {symbol} のキャッシュデータはありません。全期間をダウンロードします (No cache data available)");
+                    // キャッシュに何もない場合は、全範囲が必要
+                    requiredRanges = new List<DateRange> { new DateRange(startDate, endDate) };
                 }
             }
-
-            // 取引日があるか確認
-            if (!await CheckTradingDayRangeAsync(newStartDate, newEndDate))
+            catch (Exception ex)
             {
-                _logger.LogDebug($"シンボル {symbol} の期間 {newStartDate:yyyy-MM-dd} から {newEndDate:yyyy-MM-dd} に取引日がありません (No trading days for symbol {symbol} from {newStartDate:yyyy-MM-dd} to {newEndDate:yyyy-MM-dd})");
-                
-                // データが存在しない期間として記録（SQLiteとメモリの両方）
-                await _stockDataCache.RecordNoDataPeriodAsync(symbol, newStartDate, newEndDate);
-                RecordNoDataPeriod(symbol, newStartDate, newEndDate);
-                
-                // キャッシュされたデータを返す（あれば）
-                if (_dataCache.TryGetValue(symbol, out var currentCachedData) && currentCachedData != null)
-                {
-                    return currentCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
-                }
-                return new List<StockData>();
+                _logger.LogWarning(ex, $"キャッシュ確認中にエラーが発生しました: {ex.Message} (Error checking cache)");
+                // エラー時は全範囲を取得
+                requiredRanges = new List<DateRange> { new DateRange(startDate, endDate) };
             }
+        }
+        else
+        {
+            _logger.LogDebug($"シンボル {symbol} の強制更新が指定されたため、キャッシュをスキップします (Force update specified, skipping cache)");
+            // 強制更新時は全範囲を取得
+            requiredRanges = new List<DateRange> { new DateRange(startDate, endDate) };
+        }
 
-            // データをフェッチ
-            var newData = await FetchStockDataAsync(symbol, newStartDate, newEndDate);
-
-            // データが取得できなかった場合
-            if (newData.Count == 0)
+        // 各必要範囲に対して処理（取引日のみに絞り込み）
+        foreach (var range in requiredRanges)
+        {
+            try
             {
-                _logger.LogWarning($"シンボル {symbol} の期間 {newStartDate:yyyy-MM-dd} から {newEndDate:yyyy-MM-dd} のデータが取得できませんでした (No data available for symbol {symbol} from {newStartDate:yyyy-MM-dd} to {newEndDate:yyyy-MM-dd})");
-                
-                // データが存在しない期間として記録（SQLiteとメモリの両方）
-                await _stockDataCache.RecordNoDataPeriodAsync(symbol, newStartDate, newEndDate);
-                RecordNoDataPeriod(symbol, newStartDate, newEndDate);
-                
-                // キャッシュされたデータを返す（あれば）
-                if (_dataCache.TryGetValue(symbol, out var currentCachedData) && currentCachedData != null)
+                // ^DJI以外の場合、取引日のみをフィルタリング
+                if (symbol != "^DJI" && _tradingDayCalendar != null)
                 {
-                    return currentCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                    // 範囲内の取引日のみを取得
+                    var tradingDays = _tradingDayCalendar.GetTradingDays(range.Start, range.End);
+                    
+                    if (tradingDays.Count == 0)
+                    {
+                        _logger.LogDebug($"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} に取引日がありません (No trading days in period)");
+                        continue; // 次の範囲へ
+                    }
+                    
+                    // 最小の取引日と最大の取引日で範囲を再設定
+                    range.Start = tradingDays.Min();
+                    range.End = tradingDays.Max();
+                    
+                    _logger.LogDebug($"シンボル {symbol} の取引日に絞り込まれた範囲: {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} (Range narrowed to trading days)");
                 }
-                return new List<StockData>();
+                
+                // 取引日があるか確認
+                if (!await CheckTradingDayRangeAsync(range.Start, range.End))
+                {
+                    _logger.LogDebug($"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} に取引日がありません (No trading days in this period)");
+                    
+                    // データが存在しない期間として記録
+                    await _stockDataCache.RecordNoDataPeriodAsync(symbol, range.Start, range.End);
+                    RecordNoDataPeriod(symbol, range.Start, range.End);
+                    
+                    continue;  // 次の範囲へ
+                }
+                
+                // Yahoo Financeからデータを取得
+                _logger.LogDebug($"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} のデータをダウンロードします (Downloading data)");
+                var newData = await FetchStockDataAsync(symbol, range.Start, range.End);
+                
+                if (newData.Count > 0)
+                {
+                    _logger.LogDebug($"シンボル {symbol} の {newData.Count} 件のデータをダウンロードしました (Downloaded data)");
+                    
+                    // SQLiteキャッシュに保存
+                    var newDataPoints = newData.Select(d => new StockDataPoint
+                    {
+                        Date = d.DateTime,
+                        Open = d.Open,
+                        High = d.High,
+                        Low = d.Low,
+                        Close = d.Close,
+                        AdjClose = d.AdjClose,
+                        Volume = d.Volume
+                    }).ToList();
+                    
+                    await _stockDataCache.SaveStockDataAsync(symbol, newDataPoints);
+                    
+                    // 既存の結果にマージ（重複を避ける）
+                    var existingDates = new HashSet<DateTime>(resultData.Select(d => d.DateTime.Date));
+                    var uniqueNewData = newData.Where(d => !existingDates.Contains(d.DateTime.Date)).ToList();
+                    resultData.AddRange(uniqueNewData);
+                    
+                    _logger.LogDebug($"シンボル {symbol} の結果データに {uniqueNewData.Count} 件のデータを追加しました (Added unique new data)");
+                    
+                    // メモリキャッシュも更新
+                    if (_dataCache.TryGetValue(symbol, out var cachedData))
+                    {
+                        var combinedData = cachedData.Data.Concat(uniqueNewData)
+                            .GroupBy(d => d.DateTime.Date)
+                            .Select(g => g.First()) // 重複がある場合は最初の要素を使用
+                            .ToList();
+                            
+                        _dataCache[symbol] = new SymbolCacheData { 
+                            Data = combinedData,
+                            LastUpdateTime = DateTime.Now
+                        };
+                    }
+                    else
+                    {
+                        _dataCache[symbol] = new SymbolCacheData { 
+                            Data = newData,
+                            LastUpdateTime = DateTime.Now
+                        };
+                    }
+                    
+                    // ^DJIデータの場合は取引日カレンダーを更新
+                    if (symbol == "^DJI" && _tradingDayCalendar != null)
+                    {
+                        await _tradingDayCalendar.UpdateCalendarAsync(range.Start, range.End, true);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning($"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} のデータが取得できませんでした (No data available)");
+                    
+                    // データが存在しない期間として記録
+                    await _stockDataCache.RecordNoDataPeriodAsync(symbol, range.Start, range.End);
+                    RecordNoDataPeriod(symbol, range.Start, range.End);
+                }
             }
-
-            // SQLiteキャッシュに保存
-            var newDataPoints = newData.Select(d => new StockDataPoint
+            catch (Exception ex)
             {
-                Date = d.DateTime,
-                Open = d.Open,
-                High = d.High,
-                Low = d.Low,
-                Close = d.Close,
-                AdjClose = d.AdjClose,
-                Volume = d.Volume
-            }).ToList();
+                _logger.LogError(ex, $"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} のデータ取得中にエラーが発生しました (Error fetching data)");
+                // エラーが発生しても続行（他の範囲を試す）
+            }
+        }
+        
+        // 最終結果を日付順にソートして返す
+        var finalData = resultData
+            .Where(d => d.DateTime >= startDate && d.DateTime <= endDate)
+            .OrderBy(d => d.DateTime)
+            .ToList();
+        
+        _logger.LogDebug($"GetStockDataAsync完了: 銘柄={symbol}, 返却件数={finalData.Count} (Completed GetStockDataAsync)");
+        
+        return finalData;
+    }
+
+    /// <summary>
+    /// キャッシュから指定された日付範囲のデータを取得します
+    /// </summary>
+    private async Task<List<StockData>> GetDataFromCacheAsync(string symbol, DateTime startDate, DateTime endDate)
+    {
+        List<StockData> result = new List<StockData>();
+        
+        // SQLiteキャッシュから取得
+        var stockDataPoints = await _stockDataCache.GetStockDataAsync(symbol, startDate, endDate);
+        if (stockDataPoints != null && stockDataPoints.Any())
+        {
+            foreach (var p in stockDataPoints)
+            {
+                result.Add(new StockData
+                {
+                    Symbol = symbol,
+                    DateTime = p.Date,
+                    Date = p.Date.Year * 10000 + p.Date.Month * 100 + p.Date.Day,
+                    Open = p.Open,
+                    High = p.High,
+                    Low = p.Low,
+                    Close = p.Close,
+                    AdjClose = p.AdjClose,
+                    Volume = p.Volume
+                });
+            }
             
-            await _stockDataCache.SaveStockDataAsync(symbol, newDataPoints);
-
-            // メモリキャッシュを更新
-            if (_dataCache.TryGetValue(symbol, out var finalCachedData) && finalCachedData != null)
+            _logger.LogDebug($"SQLiteキャッシュから {result.Count} 件のデータを取得しました (Retrieved data from SQLite cache)");
+            return result;
+        }
+        
+        // SQLiteに無い場合はメモリキャッシュも確認
+        if (_dataCache.TryGetValue(symbol, out var cachedData) && cachedData.Data.Any())
+        {
+            var filteredData = cachedData.Data
+                .Where(d => d.DateTime >= startDate && d.DateTime <= endDate)
+                .ToList();
+            
+            if (filteredData.Any())
             {
-                var combinedData = finalCachedData.Data.Concat(newData).DistinctBy(d => d.DateTime).ToList();
-                _dataCache[symbol] = new SymbolCacheData { Data = combinedData };
+                _logger.LogDebug($"メモリキャッシュから {filteredData.Count} 件のデータを取得しました (Retrieved data from memory cache)");
                 
-                return combinedData.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
+                // メモリキャッシュにあるデータをSQLiteにも保存
+                var dataPoints = filteredData.Select(d => new StockDataPoint
+                {
+                    Date = d.DateTime,
+                    Open = d.Open,
+                    High = d.High,
+                    Low = d.Low,
+                    Close = d.Close,
+                    AdjClose = d.AdjClose,
+                    Volume = d.Volume
+                }).ToList();
+                
+                await _stockDataCache.SaveStockDataAsync(symbol, dataPoints);
+                
+                return filteredData;
+            }
+        }
+        
+        return result;  // 空のリスト
+    }
+
+    /// <summary>
+    /// キャッシュされたデータに基づいて、欠けている日付範囲を特定します
+    /// 取引日カレンダーを使用して、休業日を除外します
+    /// </summary>
+    private List<DateRange> FindMissingDateRanges(DateTime startDate, DateTime endDate, HashSet<DateTime> cachedDates)
+    {
+        var result = new List<DateRange>();
+        
+        // 取引日カレンダーがない場合は通常のロジックを使用
+        if (_tradingDayCalendar == null)
+        {
+            // 取引日だけを対象にするため、平日のみをチェック
+            DateTime currentDate = startDate;
+            DateTime? rangeStart = null;
+            
+            while (currentDate <= endDate)
+            {
+                // 土日をスキップ
+                if (currentDate.DayOfWeek != DayOfWeek.Saturday && currentDate.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    bool isDateCached = cachedDates.Contains(currentDate.Date);
+                    
+                    if (!isDateCached)
+                    {
+                        // キャッシュにない日付が見つかった場合、範囲の開始点を記録
+                        if (rangeStart == null)
+                        {
+                            rangeStart = currentDate;
+                        }
+                    }
+                    else if (rangeStart != null)
+                    {
+                        // キャッシュにある日付が見つかり、範囲の開始点が設定されている場合、
+                        // その範囲を結果に追加し、範囲の開始点をリセット
+                        result.Add(new DateRange(rangeStart.Value, currentDate.AddDays(-1)));
+                        rangeStart = null;
+                    }
+                }
+                
+                currentDate = currentDate.AddDays(1);
+            }
+            
+            // 最後の範囲が終了していない場合、終了日までの範囲を追加
+            if (rangeStart != null)
+            {
+                result.Add(new DateRange(rangeStart.Value, endDate));
+            }
+        }
+        else
+        {
+            // 取引日カレンダーを使用する場合は、取引日のみをチェック
+            var tradingDays = _tradingDayCalendar.GetTradingDays(startDate, endDate);
+            DateTime? rangeStart = null;
+            
+            foreach (var date in tradingDays)
+            {
+                bool isDateCached = cachedDates.Contains(date);
+                
+                if (!isDateCached)
+                {
+                    // キャッシュにない取引日が見つかった場合、範囲の開始点を記録
+                    if (rangeStart == null)
+                    {
+                        rangeStart = date;
+                    }
+                }
+                else if (rangeStart != null)
+                {
+                    // キャッシュにある取引日が見つかり、範囲の開始点が設定されている場合、
+                    // その範囲を結果に追加し、範囲の開始点をリセット
+                    var prevDate = tradingDays
+                        .Where(d => d < date)
+                        .OrderByDescending(d => d)
+                        .FirstOrDefault();
+                        
+                    if (prevDate != default)
+                    {
+                        result.Add(new DateRange(rangeStart.Value, prevDate));
+                    }
+                    rangeStart = null;
+                }
+            }
+            
+            // 最後の範囲が終了していない場合、終了日までの範囲を追加
+            if (rangeStart != null)
+            {
+                result.Add(new DateRange(rangeStart.Value, tradingDays.Last()));
+            }
+        }
+        
+        // 短すぎる範囲を統合（例: 3日未満の隙間は単一の範囲にマージ）
+        result = MergeShortRanges(result, TimeSpan.FromDays(3));
+        
+        return result;
+    }
+
+    /// <summary>
+    /// 短い日付範囲を統合します
+    /// </summary>
+    private List<DateRange> MergeShortRanges(List<DateRange> ranges, TimeSpan threshold)
+    {
+        if (ranges.Count <= 1)
+            return ranges;
+        
+        var result = new List<DateRange>();
+        var sortedRanges = ranges.OrderBy(r => r.Start).ToList();
+        
+        var currentRange = sortedRanges[0];
+        
+        for (int i = 1; i < sortedRanges.Count; i++)
+        {
+            var nextRange = sortedRanges[i];
+            var gap = nextRange.Start - currentRange.End;
+            
+            if (gap <= threshold)
+            {
+                // 範囲間のギャップが閾値以下なら統合
+                currentRange = new DateRange(currentRange.Start, nextRange.End);
             }
             else
             {
-                _dataCache[symbol] = new SymbolCacheData { Data = newData };
-                return newData;
+                // そうでなければ現在の範囲を追加し、次の範囲に進む
+                result.Add(currentRange);
+                currentRange = nextRange;
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException)
-        {
-            _logger.LogError(ex, $"シンボル {symbol} のデータ取得中にエラーが発生しました (Error fetching data for symbol {symbol})");
-            
-            if (_dataCache.TryGetValue(symbol, out var currentCachedData) && currentCachedData != null)
-            {
-                return currentCachedData.Data.Where(d => d.DateTime >= startDate && d.DateTime <= endDate).ToList();
-            }
-            
-            throw;
-        }
+        
+        // 最後の範囲を追加
+        result.Add(currentRange);
+        
+        return result;
     }
 
     /// <summary>
@@ -334,6 +642,19 @@ public class StockDataService : IStockDataService
     {
         try
         {
+            // TradingDayCalendarServiceが利用可能な場合はそれを使用
+            if (_tradingDayCalendar != null)
+            {
+                _logger.LogDebug("TradingDayCalendarServiceを使用して営業日をチェックしています: {StartDate}から{EndDate}まで (Checking trading days using calendar service)",
+                    startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+                
+                // カレンダーを更新（既に最新ならキャッシュを使用）
+                await _tradingDayCalendar.UpdateCalendarAsync(startDate, endDate);
+                
+                // カレンダー内に取引日があるかどうかをチェック
+                return _tradingDayCalendar.HasTradingDays(startDate, endDate);
+            }
+            
             // TradingDayCacheServiceが利用可能な場合はそれを使用
             if (_tradingDayCache != null)
             {
@@ -909,23 +1230,6 @@ label_retry:
                 return merged;
             }
         );
-
-        // TradingDayCacheServiceは全体的な休業日を管理している
-        // ここで追加するべきものではない。どこかで"^DJI"のようなメジャー指数のカレンダーで調整すべき
-
-        //// TradingDayCacheServiceが利用可能な場合、そちらにも記録
-        //if (_tradingDayCache != null)
-        //{
-        //    // 日単位でデータなし期間を記録
-        //    var currentDate = start;
-
-        //    while (currentDate <= end)
-        //    {
-        //        _tradingDayCache.RecordNoDataPeriod(currentDate);
-        //        _logger.LogDebug($"日付 {currentDate:yyyy-MM-dd} をTradingDayCacheServiceにデータなし期間として記録しました (Date recorded as no-data period in cache service)");
-        //        currentDate = currentDate.AddDays(1);
-        //    }
-        //}
     }
 
     /// <summary>
@@ -979,7 +1283,6 @@ label_retry:
     /// <returns>データが存在しない期間に含まれる場合はtrue</returns>
     private bool IsInNoDataPeriod(string symbol, DateTime startDate, DateTime endDate)
     {
-
         // TradingDayCacheServiceが利用可能な場合、そちらも確認
         if (_tradingDayCache != null)
         {
@@ -1008,8 +1311,7 @@ label_retry:
         {
             if (startDate >= period.Start && endDate <= period.End)
             {
-                _logger.LogDebug($"期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} は、ローカルキャッシュのデータなし期間 {period.Start:yyyy-MM-dd} から {period.End:yyyy-MM-dd} に含まれています (Date range is within a known no-data period)",
-                    startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), period.Start.ToString("yyyy-MM-dd"), period.End.ToString("yyyy-MM-dd"));
+                _logger.LogDebug($"期間 {startDate:yyyy-MM-dd} から {endDate:yyyy-MM-dd} は、ローカルキャッシュのデータなし期間 {period.Start:yyyy-MM-dd} から {period.End:yyyy-MM-dd} に含まれています (Date range is within a known no-data period)");
                 return true;
             }
         }
@@ -1028,26 +1330,5 @@ label_retry:
     public async Task<List<StockData>> GetStockDataWithoutRetryAsync(string symbol, DateTime startDate, DateTime endDate)
     {
         return await FetchStockDataWithoutRetryAsync(symbol, startDate, endDate);
-    }
-
-    private static long ToUnixTimestamp(DateTime dateTime)
-    {
-        var epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        return (long)(dateTime.ToUniversalTime() - epoch).TotalSeconds;
-    }
-
-    private static DateTime FromUnixTimestamp(long unixTime)
-    {
-        var epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        return epoch.AddSeconds(unixTime).ToLocalTime();
-    }
-
-    private void RecordDelistedSymbol(string symbol)
-    {
-        if (!_delistedSymbols.Contains(symbol))
-        {
-            _delistedSymbols.Add(symbol);
-            _logger.LogDebug("銘柄{Symbol}を上場廃止リストに追加しました (Added symbol to delisted symbols list)", symbol);
-        }
     }
 }
