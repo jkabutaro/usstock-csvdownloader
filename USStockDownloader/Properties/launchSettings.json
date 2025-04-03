@@ -2,7 +2,7 @@
   "profiles": {
     "USStockDownloader": {
       "commandName": "Project",
-      "commandLineArgs": "--symbols AAPL,^DJI --parallel 3\r\n"
+      "commandLineArgs": "--file C:\\Dropbox\\Dropbox\\claude_works\\usstock_csvdownloder\\USStockDownloader\\bin\\Debug\\net9.0\\us_stock_list.csv --start-date 2020-01-01 --parallel 25\r\n"
     }
   }
 }

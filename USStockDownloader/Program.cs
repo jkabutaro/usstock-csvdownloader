@@ -432,12 +432,21 @@ namespace USStockDownloader
                         restrictedToMinimumLevel: LogEventLevel.Debug);
                     
                     // デバッグログ用のファイルも追加
-                    string debugLogFilePath = Path.Combine(logDir, "USStockDownloader_debug_.log");
-                    logConfig = logConfig.WriteTo.File(
-                        debugLogFilePath,
-                        rollingInterval: RollingInterval.Day,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
-                        restrictedToMinimumLevel: LogEventLevel.Debug);
+
+                    // タイムスタンプを使用する方法
+                    var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    logConfig = new LoggerConfiguration()
+                        .MinimumLevel.Debug()
+                        .WriteTo.File(
+                            Path.Combine(logDir, $"USStockDownloader_debug_P_{timestamp}.log"),
+                            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
+
+                    //string debugLogFilePath = Path.Combine(logDir, "USStockDownloader_debug_P_.log");
+                    //logConfig = logConfig.WriteTo.File(
+                    //    debugLogFilePath,
+                    //    rollingInterval: RollingInterval.Day,
+                    //    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                    //    restrictedToMinimumLevel: LogEventLevel.Debug);
                     
                     Console.WriteLine($"アプリログファイルパス: {logFilePath} (App log file path)");
                 }

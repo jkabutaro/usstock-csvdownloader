@@ -55,13 +55,21 @@ namespace USStockDownloader.Utils
                         // 絶対パスを取得して表示（デバッグ用）
                         var absoluteLogPath = Path.GetFullPath(appLogDir);
                         Console.WriteLine($"AppLoggerFactory: ログディレクトリの絶対パス: {absoluteLogPath}");
-                        
+
+                        // タイムスタンプを使用する方法
+                        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                         var logConfig = new LoggerConfiguration()
-                            .MinimumLevel.Debug() // Debugレベルからすべて記録
+                            .MinimumLevel.Debug()
                             .WriteTo.File(
-                                Path.Combine(appLogDir, "USStockDownloader_debug_.log"),
-                                rollingInterval: RollingInterval.Day,
+                                Path.Combine(appLogDir, $"USStockDownloader_debug_L_{timestamp}.log"),
                                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
+
+                        //var logConfig = new LoggerConfiguration()
+                        //    .MinimumLevel.Debug() // Debugレベルからすべて記録
+                        //    .WriteTo.File(
+                        //        Path.Combine(appLogDir, "USStockDownloader_debug_L_.log"),
+                        //        rollingInterval: RollingInterval.Day,
+                        //        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}");
 
                         // Serilogロガーの作成
                         var logger = logConfig.CreateLogger();
