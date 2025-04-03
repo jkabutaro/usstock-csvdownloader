@@ -129,9 +129,22 @@ namespace USStockDownloader
 
                 var logger = serviceProvider.GetService<ILogger<Program>>();
                 var downloadManager = serviceProvider.GetRequiredService<StockDownloadManager>();
-
-                // コマンドライン引数の解析
-                //var options = DownloadOptions.Parse(args);
+                
+                // 市場休場日を初期化（処理を開始する前に）
+                try
+                {
+                    Console.WriteLine("市場休場日データを初期化しています... (Initializing market holidays data...)");
+                    var stockDataService = serviceProvider.GetRequiredService<IStockDataService>();
+                    await stockDataService.InitializeMarketHolidaysAsync();
+                    Console.WriteLine("市場休場日データの初期化が完了しました (Market holidays data initialization completed)");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"市場休場日データの初期化に失敗しました: {ex.Message} (Failed to initialize market holidays data)");
+                    Console.WriteLine("アプリケーションを終了します... (Exiting application...)");
+                    Environment.ExitCode = 1;
+                    return;
+                }
 
                 List<string> symbols = new List<string>();
                 

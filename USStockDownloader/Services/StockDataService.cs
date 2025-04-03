@@ -55,6 +55,12 @@ public class StockDataService : IStockDataService
     // 銘柄ごとの「データが存在しない期間」を追跡
     private readonly ConcurrentDictionary<string, List<DateRange>> _noDataPeriods = 
         new ConcurrentDictionary<string, List<DateRange>>();
+        
+    // DJIデータに基づく市場休場日を保持
+    private HashSet<DateTime> _marketHolidays = new HashSet<DateTime>();
+    
+    // 市場休場日の初期化フラグ
+    private bool _marketHolidaysInitialized = false;
 
     // 日付範囲を表すクラス
     private class DateRange
@@ -150,6 +156,67 @@ public class StockDataService : IStockDataService
         
         // 取引日カレンダーサービスを初期化（遅延初期化）
         InitializeTradingDayCalendarService();
+        
+        // 明示的に初期化するように変更したため、ここでは初期化しない
+        // 初期化は Program.cs で行います
+    }
+
+    /// <summary>
+    /// 市場休場日リストを初期化します（アプリケーション起動時に実行）
+    /// </summary>
+    public async Task InitializeMarketHolidaysAsync()
+    {
+        if (_marketHolidaysInitialized)
+            return;
+            
+        _logger.LogDebug("^DJIのデータから市場休場日を初期化しています (Initializing market holidays from DJI data)");
+        
+        // 過去2年間のデータを使用
+        var endDate = DateTime.Today;
+        var startDate = endDate.AddYears(-2);
+        
+        try 
+        {
+            // ^DJIのデータを取得
+            var djiData = await GetStockDataAsync("^DJI", startDate, endDate,true);
+            
+            if (djiData == null || !djiData.Any())
+            {
+                _logger.LogWarning("^DJIのデータが取得できませんでした。市場休場日判定が正確でない可能性があります (Failed to get DJI data for market holidays)");
+                return;
+            }
+            
+            _logger.LogDebug($"市場休場日判定のため^DJIのデータを取得しました: {djiData.Count}件 (Retrieved DJI data for market holiday detection)");
+            
+            // 取引日のセットを作成
+            var tradingDays = new HashSet<DateTime>(djiData.Select(d => d.DateTime.Date));
+            
+            // 範囲内の全日付をチェックし、平日なのにデータがない日は休場日と判断
+            var currentDate = startDate;
+            while (currentDate <= endDate)
+            {
+                // 平日（月〜金）のみをチェック
+                if (currentDate.DayOfWeek != DayOfWeek.Saturday && currentDate.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    // ^DJIデータにない平日は休場日と判断
+                    if (!tradingDays.Contains(currentDate))
+                    {
+                        _marketHolidays.Add(currentDate);
+                        _logger.LogDebug($"市場休場日を検出: {currentDate:yyyy-MM-dd} (Market holiday detected)");
+                    }
+                }
+                
+                currentDate = currentDate.AddDays(1);
+            }
+            
+            _marketHolidaysInitialized = true;
+            _logger.LogDebug($"市場休場日の初期化が完了しました: {_marketHolidays.Count}日の休場日を検出 (Market holidays initialization completed)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "市場休場日の初期化中にエラーが発生しました (Error during market holidays initialization)");
+            throw; // 初期化に失敗した場合は例外を投げて、アプリの起動を中止できるようにする
+        }
     }
     
     /// <summary>
@@ -197,8 +264,9 @@ public class StockDataService : IStockDataService
         string symbol, 
         DateTime startDate, 
         DateTime endDate, 
-        bool forceUpdate = false,
-        DataRetrievalPurpose purpose = DataRetrievalPurpose.Normal)
+        bool forceUpdate = false
+        //DataRetrievalPurpose purpose = DataRetrievalPurpose.Normal
+        )
     {
         _logger.LogDebug($"GetStockDataAsync開始: 銘柄={symbol}, 開始日={startDate:yyyy-MM-dd}, 終了日={endDate:yyyy-MM-dd}, 強制更新={forceUpdate} (Starting GetStockDataAsync)");
 
@@ -220,21 +288,22 @@ public class StockDataService : IStockDataService
             return new List<StockData>();
         }
         
-        // ^DJIの場合は特別扱い - 取引日カレンダーに使用されるので、最新データを取得する必要があるかチェック
-        if (symbol == "^DJI")
-        {
-            _logger.LogDebug("^DJIのデータは取引日カレンダーに使用されるため、特別処理を適用します (Special handling for ^DJI as it is used for trading day calendar)");
-            // 取引日カレンダーサービスを初期化
-            InitializeTradingDayCalendarService();
+        //// ^DJIの場合は特別扱い - 取引日カレンダーに使用されるので、最新データを取得する必要があるかチェック
+        //if (symbol == "^DJI")
+        //{
+        //    _logger.LogDebug("^DJIのデータは取引日カレンダーに使用されるため、特別処理を適用します (Special handling for ^DJI as it is used for trading day calendar)");
+        //    // 取引日カレンダーサービスを初期化
+        //    InitializeTradingDayCalendarService();
             
-            // 取引日カレンダーを更新（カレンダーサービス内でキャッシュ判断）
-            if (_tradingDayCalendar != null)
-            {
-                await _tradingDayCalendar.UpdateCalendarAsync(startDate, endDate, forceUpdate);
-            }
-        }
-        else
+        //    // 取引日カレンダーを更新（カレンダーサービス内でキャッシュ判断）
+        //    if (_tradingDayCalendar != null)
+        //    {
+        //        await _tradingDayCalendar.UpdateCalendarAsync(startDate, endDate, forceUpdate);
+        //    }
+        //}
+        //else
         {
+
             // ^DJI以外の場合は取引日カレンダーを確認
             if (_tradingDayCalendar != null)
             {
@@ -322,24 +391,24 @@ public class StockDataService : IStockDataService
         {
             try
             {
-                // ^DJI以外の場合、取引日のみをフィルタリング
-                if (symbol != "^DJI" && _tradingDayCalendar != null)
-                {
-                    // 範囲内の取引日のみを取得
-                    var tradingDays = _tradingDayCalendar.GetTradingDays(range.Start, range.End);
+                //// ^DJI以外の場合、取引日のみをフィルタリング
+                //if (symbol != "^DJI" && _tradingDayCalendar != null)
+                //{
+                //    // 範囲内の取引日のみを取得
+                //    var tradingDays = _tradingDayCalendar.GetTradingDays(range.Start, range.End);
                     
-                    if (tradingDays.Count == 0)
-                    {
-                        _logger.LogDebug($"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} に取引日がありません (No trading days in period)");
-                        continue; // 次の範囲へ
-                    }
+                //    if (tradingDays.Count == 0)
+                //    {
+                //        _logger.LogDebug($"シンボル {symbol} の期間 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} に取引日がありません (No trading days in period)");
+                //        continue; // 次の範囲へ
+                //    }
                     
-                    // 最小の取引日と最大の取引日で範囲を再設定
-                    range.Start = tradingDays.Min();
-                    range.End = tradingDays.Max();
+                //    // 最小の取引日と最大の取引日で範囲を再設定
+                //    range.Start = tradingDays.Min();
+                //    range.End = tradingDays.Max();
                     
-                    _logger.LogDebug($"シンボル {symbol} の取引日に絞り込まれた範囲: {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} (Range narrowed to trading days)");
-                }
+                //    _logger.LogDebug($"シンボル {symbol} の取引日に絞り込まれた範囲: {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} (Range narrowed to trading days)");
+                //}
                 
                 // 取引日があるか確認
                 if (!await CheckTradingDayRangeAsync(range.Start, range.End))
@@ -403,11 +472,11 @@ public class StockDataService : IStockDataService
                         };
                     }
                     
-                    // ^DJIデータの場合は取引日カレンダーを更新
-                    if (symbol == "^DJI" && _tradingDayCalendar != null)
-                    {
-                        await _tradingDayCalendar.UpdateCalendarAsync(range.Start, range.End, true);
-                    }
+                    //// ^DJIデータの場合は取引日カレンダーを更新
+                    //if (symbol == "^DJI" && _tradingDayCalendar != null)
+                    //{
+                    //    await _tradingDayCalendar.UpdateCalendarAsync(range.Start, range.End, true);
+                    //}
                 }
                 else
                 {
@@ -501,16 +570,97 @@ public class StockDataService : IStockDataService
 
     /// <summary>
     /// キャッシュされたデータに基づいて、欠けている日付範囲を特定します
-    /// 取引日カレンダーを使用して、休業日を除外します
+    /// 取引日カレンダーと休場日情報を使用して、休業日を除外します
     /// </summary>
     private List<DateRange> FindMissingDateRanges(DateTime startDate, DateTime endDate, HashSet<DateTime> cachedDates)
     {
         var result = new List<DateRange>();
         
-        // 取引日カレンダーがない場合は通常のロジックを使用
-        if (_tradingDayCalendar == null)
+        // ^DJIデータに基づく休場日判定を優先
+        if (_marketHolidaysInitialized)
         {
-            // 取引日だけを対象にするため、平日のみをチェック
+            // 営業日のみをチェック（土日と休場日をスキップ）
+            DateTime currentDate = startDate;
+            DateTime? rangeStart = null;
+            
+            while (currentDate <= endDate)
+            {
+                // 休場日をスキップ
+                if (!IsMarketHoliday(currentDate))
+                {
+                    bool isDateCached = cachedDates.Contains(currentDate.Date);
+                    
+                    if (!isDateCached)
+                    {
+                        // キャッシュにない日付が見つかった場合、範囲の開始点を記録
+                        if (rangeStart == null)
+                        {
+                            rangeStart = currentDate;
+                        }
+                    }
+                    else if (rangeStart != null)
+                    {
+                        // キャッシュにある日付が見つかり、範囲の開始点が設定されている場合、
+                        // その範囲を結果に追加し、範囲の開始点をリセット
+                        result.Add(new DateRange(rangeStart.Value, currentDate.AddDays(-1)));
+                        rangeStart = null;
+                    }
+                }
+                
+                currentDate = currentDate.AddDays(1);
+            }
+            
+            // 最後の範囲が終了していない場合、終了日までの範囲を追加
+            if (rangeStart != null)
+            {
+                result.Add(new DateRange(rangeStart.Value, endDate));
+            }
+        }
+        // 取引日カレンダーがある場合はそれを使用
+        else if (_tradingDayCalendar != null)
+        {
+            // 取引日カレンダーを使用する場合は、取引日のみをチェック
+            var tradingDays = _tradingDayCalendar.GetTradingDays(startDate, endDate);
+            DateTime? rangeStart = null;
+            
+            foreach (var date in tradingDays)
+            {
+                bool isDateCached = cachedDates.Contains(date);
+                
+                if (!isDateCached)
+                {
+                    // キャッシュにない取引日が見つかった場合、範囲の開始点を記録
+                    if (rangeStart == null)
+                    {
+                        rangeStart = date;
+                    }
+                }
+                else if (rangeStart != null)
+                {
+                    // キャッシュにある取引日が見つかり、範囲の開始点が設定されている場合、
+                    // その範囲を結果に追加し、範囲の開始点をリセット
+                    var prevDate = tradingDays
+                        .Where(d => d < date)
+                        .OrderByDescending(d => d)
+                        .FirstOrDefault();
+                        
+                    if (prevDate != default)
+                    {
+                        result.Add(new DateRange(rangeStart.Value, prevDate));
+                    }
+                    rangeStart = null;
+                }
+            }
+            
+            // 最後の範囲が終了していない場合、終了日までの範囲を追加
+            if (rangeStart != null && tradingDays.Any())
+            {
+                result.Add(new DateRange(rangeStart.Value, tradingDays.Last()));
+            }
+        }
+        else
+        {
+            // どちらもない場合は、平日のみをチェック
             DateTime currentDate = startDate;
             DateTime? rangeStart = null;
             
@@ -547,47 +697,44 @@ public class StockDataService : IStockDataService
                 result.Add(new DateRange(rangeStart.Value, endDate));
             }
         }
-        else
+        
+        // 欠けている範囲ごとにログを出力
+        foreach (var range in result)
         {
-            // 取引日カレンダーを使用する場合は、取引日のみをチェック
-            var tradingDays = _tradingDayCalendar.GetTradingDays(startDate, endDate);
-            DateTime? rangeStart = null;
-            
-            foreach (var date in tradingDays)
+            // 休場日のみの範囲かどうかをチェック
+            bool containsOnlyHolidays = true;
+            DateTime checkDate = range.Start;
+            while (checkDate <= range.End)
             {
-                bool isDateCached = cachedDates.Contains(date);
-                
-                if (!isDateCached)
+                if (!IsMarketHoliday(checkDate))
                 {
-                    // キャッシュにない取引日が見つかった場合、範囲の開始点を記録
-                    if (rangeStart == null)
-                    {
-                        rangeStart = date;
-                    }
+                    containsOnlyHolidays = false;
+                    break;
                 }
-                else if (rangeStart != null)
-                {
-                    // キャッシュにある取引日が見つかり、範囲の開始点が設定されている場合、
-                    // その範囲を結果に追加し、範囲の開始点をリセット
-                    var prevDate = tradingDays
-                        .Where(d => d < date)
-                        .OrderByDescending(d => d)
-                        .FirstOrDefault();
-                        
-                    if (prevDate != default)
-                    {
-                        result.Add(new DateRange(rangeStart.Value, prevDate));
-                    }
-                    rangeStart = null;
-                }
+                checkDate = checkDate.AddDays(1);
             }
             
-            // 最後の範囲が終了していない場合、終了日までの範囲を追加
-            if (rangeStart != null)
+            if (containsOnlyHolidays)
             {
-                result.Add(new DateRange(rangeStart.Value, tradingDays.Last()));
+                _logger.LogDebug($"欠けている範囲 {range.Start:yyyy-MM-dd} から {range.End:yyyy-MM-dd} は全て休場日です (All days in range are market holidays)");
             }
         }
+        
+        // 休場日のみの範囲を除外
+        result = result.Where(range => {
+            bool containsOnlyHolidays = true;
+            DateTime checkDate = range.Start;
+            while (checkDate <= range.End)
+            {
+                if (!IsMarketHoliday(checkDate))
+                {
+                    containsOnlyHolidays = false;
+                    break;
+                }
+                checkDate = checkDate.AddDays(1);
+            }
+            return !containsOnlyHolidays;
+        }).ToList();
         
         // 短すぎる範囲を統合（例: 3日未満の隙間は単一の範囲にマージ）
         result = MergeShortRanges(result, TimeSpan.FromDays(3));
@@ -633,6 +780,21 @@ public class StockDataService : IStockDataService
     }
 
     /// <summary>
+    /// 指定された日が市場休場日かどうかを判定します
+    /// </summary>
+    public bool IsMarketHoliday(DateTime date)
+    {
+        date = date.Date;
+        
+        // 週末は休場日
+        if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+            return true;
+            
+        // 休場日リストに含まれていれば休場日
+        return _marketHolidays.Contains(date);
+    }
+
+    /// <summary>
     /// 指定された日付範囲に営業日があるかどうかを確認します
     /// </summary>
     /// <param name="startDate">開始日</param>
@@ -642,6 +804,22 @@ public class StockDataService : IStockDataService
     {
         try
         {
+            // 日付範囲内のすべての日をチェック
+            DateTime currentDate = startDate;
+            while (currentDate <= endDate)
+            {
+                // 営業日が1日でもあれば true を返す
+                if (!IsMarketHoliday(currentDate))
+                {
+                    return true;
+                }
+                currentDate = currentDate.AddDays(1);
+            }
+            
+            // すべての日が休場日なら false を返す
+            return false;
+        
+            /* 既存のロジックはバックアップとして残しておく
             // TradingDayCalendarServiceが利用可能な場合はそれを使用
             if (_tradingDayCalendar != null)
             {
@@ -670,6 +848,7 @@ public class StockDataService : IStockDataService
             
             var djiData = await FetchStockDataWithoutRetryAsync("^DJI", startDate, endDate);
             return djiData.Count > 0;
+            */
         }
         catch (Exception ex)
         {
