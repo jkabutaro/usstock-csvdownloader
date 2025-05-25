@@ -1,3 +1,5 @@
+// US Stock CSV Downloader - A tool for downloading historical stock price data from Yahoo Finance
+// This application supports downloading data for S&P 500, Dow Jones, and other major indices
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
