@@ -43,7 +43,7 @@ jobs:
       working-directory: ${{ env.PROJECT_PATH }}
       
     - name: Publish Test Results
-      uses: dorny/test-reporter@v1
+      uses: dorny/test-reporter@v2
       if: success() || failure()
       with:
         name: .NET Test Results
