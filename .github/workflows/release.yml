@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_PATH: './USStockDownloader'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Get version from tag
+      id: version
+      run: |
+        $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: ${{ env.PROJECT_PATH }}
+      
+    - name: Build Release
+      run: dotnet build --configuration Release --no-restore
+      working-directory: ${{ env.PROJECT_PATH }}
+      
+    - name: Test
+      run: dotnet test --configuration Release --no-build --verbosity normal
+      working-directory: ${{ env.PROJECT_PATH }}
+      
+    - name: Publish Self-Contained Windows x64
+      run: dotnet publish --configuration Release --runtime win-x64 --self-contained true --output ./release/win-x64
+      working-directory: ${{ env.PROJECT_PATH }}
+      
+    - name: Publish Framework-Dependent
+      run: dotnet publish --configuration Release --output ./release/framework-dependent
+      working-directory: ${{ env.PROJECT_PATH }}
+      
+    - name: Create Release Archives
+      run: |
+        Compress-Archive -Path "${{ env.PROJECT_PATH }}/release/win-x64/*" -DestinationPath "USStockDownloader-v${{ steps.version.outputs.VERSION }}-win-x64.zip"
+        Compress-Archive -Path "${{ env.PROJECT_PATH }}/release/framework-dependent/*" -DestinationPath "USStockDownloader-v${{ steps.version.outputs.VERSION }}-framework-dependent.zip"
+      shell: pwsh
+      
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.version.outputs.VERSION }}
+        body: |
+          ## US Stock CSV Downloader v${{ steps.version.outputs.VERSION }}
+          
+          ### Downloads
+          - **Self-contained (Windows x64)**: No .NET installation required
+          - **Framework-dependent**: Requires .NET 9.0 Runtime
+          
+          ### Features
+          - Download historical stock data from Yahoo Finance
+          - Support for S&P 500, Dow Jones, and other major indices
+          - Parallel downloading with retry logic
+          - CSV format output with data validation
+          - Automatic caching for improved performance
+          
+          ### Usage
+          ```bash
+          # Download S&P 500 data
+          USStockDownloader --sp500 --output ./data
+          
+          # Download specific symbols
+          USStockDownloader --symbols AAPL,MSFT,GOOGL --output ./data
+          ```
+          
+          For more information, see the [README](https://github.com/jkabutaro/usstock-csvdownloader/blob/main/README.md).
+        draft: false
+        prerelease: false
+        
+    - name: Upload Self-Contained Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./USStockDownloader-v${{ steps.version.outputs.VERSION }}-win-x64.zip
+        asset_name: USStockDownloader-v${{ steps.version.outputs.VERSION }}-win-x64.zip
+        asset_content_type: application/zip
+        
+    - name: Upload Framework-Dependent Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./USStockDownloader-v${{ steps.version.outputs.VERSION }}-framework-dependent.zip
+        asset_name: USStockDownloader-v${{ steps.version.outputs.VERSION }}-framework-dependent.zip
+        asset_content_type: application/zip
