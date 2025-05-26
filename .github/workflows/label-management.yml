@@ -1,0 +1,182 @@
+name: Label Management
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request:
+    types: [opened, edited, ready_for_review]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly label sync on Mondays at 2 AM UTC
+
+jobs:
+  ensure-labels:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Ensure Required Labels Exist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const requiredLabels = [
+              // Type labels
+              { name: 'bug', color: 'd73a4a', description: 'Something isn\'t working' },
+              { name: 'enhancement', color: 'a2eeef', description: 'New feature or request' },
+              { name: 'question', color: 'd876e3', description: 'Further information is requested' },
+              { name: 'documentation', color: '0075ca', description: 'Improvements or additions to documentation' },
+              
+              // Priority labels
+              { name: 'priority: low', color: '0e8a16', description: 'Low priority issue' },
+              { name: 'priority: medium', color: 'fbca04', description: 'Medium priority issue' },
+              { name: 'priority: high', color: 'd93f0b', description: 'High priority issue' },
+              { name: 'priority: critical', color: 'b60205', description: 'Critical priority issue' },
+              
+              // Status labels
+              { name: 'status: new', color: 'c2e0c6', description: 'New issue or PR' },
+              { name: 'status: in-progress', color: 'fff082', description: 'Currently being worked on' },
+              { name: 'status: completed', color: '0e8a16', description: 'Work completed' },
+              { name: 'status: blocked', color: 'b60205', description: 'Blocked by external factors' },
+              
+              // Component labels
+              { name: 'stock-data', color: '1d76db', description: 'Related to stock data downloading' },
+              { name: 'performance', color: 'ff9500', description: 'Performance related' },
+              { name: 'configuration', color: 'bfd4f2', description: 'Configuration related' },
+              { name: 'api', color: '0052cc', description: 'Yahoo Finance API related' },
+              
+              // Process labels
+              { name: 'needs-triage', color: 'fbca04', description: 'Needs initial review and categorization' },
+              { name: 'needs-review', color: 'ff9500', description: 'Needs code review' },
+              { name: 'needs-testing', color: 'c5def5', description: 'Needs testing' },
+              { name: 'stale', color: 'eeeeee', description: 'Inactive for extended period' },
+              
+              // Special labels
+              { name: 'good first issue', color: '7057ff', description: 'Good for newcomers' },
+              { name: 'help wanted', color: '008672', description: 'Extra attention is needed' },
+              { name: 'dependencies', color: '0366d6', description: 'Dependency updates' },
+              { name: 'auto-update', color: 'ededed', description: 'Automated updates' },
+              { name: 'github-actions', color: '2ea44f', description: 'GitHub Actions related' }
+            ];
+            
+            for (const label of requiredLabels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+                console.log(`Created label: ${label.name}`);
+              } catch (error) {
+                if (error.status === 422) {
+                  // Label already exists, update it
+                  await github.rest.issues.updateLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description
+                  });
+                  console.log(`Updated label: ${label.name}`);
+                } else {
+                  console.error(`Error with label ${label.name}:`, error);
+                }
+              }
+            }
+
+  smart-labeling:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' || github.event.action == 'edited'
+    steps:
+      - name: Apply Smart Labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const itemType = context.eventName === 'issues' ? 'issue' : 'pull_request';
+            const item = context.payload[itemType];
+            const title = item.title.toLowerCase();
+            const body = (item.body || '').toLowerCase();
+            const labels = [];
+            
+            // Advanced pattern matching for better labeling
+            const patterns = {
+              bug: [
+                /\b(bug|error|issue|crash|fail|broken|exception|stack trace)\b/,
+                /\bnot working\b/,
+                /\bdoesn't work\b/,
+                /\bundefined\b/,
+                /\bnull reference\b/
+              ],
+              enhancement: [
+                /\b(feature|enhancement|improvement|add|new|support)\b/,
+                /\bwould be nice\b/,
+                /\bcould you add\b/,
+                /\bfeature request\b/
+              ],
+              question: [
+                /\b(question|help|how|what|why|where|when)\b/,
+                /\bhow do i\b/,
+                /\bhow to\b/,
+                /\bcan you explain\b/
+              ],
+              documentation: [
+                /\b(documentation|docs|readme|wiki|guide|tutorial)\b/,
+                /\bmissing docs\b/,
+                /\bupdate readme\b/
+              ],
+              performance: [
+                /\b(slow|performance|speed|optimization|memory|cpu)\b/,
+                /\btakes too long\b/,
+                /\bhigh memory usage\b/
+              ],
+              'stock-data': [
+                /\b(stock|symbol|ticker|yahoo|finance|download|csv|data)\b/,
+                /\bs&p 500\b/,
+                /\bdow jones\b/,
+                /\bmarket data\b/
+              ],
+              configuration: [
+                /\b(config|setting|option|parameter|argument)\b/,
+                /\bcommand line\b/,
+                /\bsettings file\b/
+              ]
+            };
+            
+            // Check patterns and add labels
+            for (const [label, regexArray] of Object.entries(patterns)) {
+              for (const regex of regexArray) {
+                if (regex.test(title) || regex.test(body)) {
+                  labels.push(label);
+                  break;
+                }
+              }
+            }
+            
+            // Priority detection
+            if (/\b(urgent|critical|important|asap|immediately)\b/.test(title + ' ' + body)) {
+              labels.push('priority: high');
+            } else if (/\b(nice to have|low priority|minor)\b/.test(title + ' ' + body)) {
+              labels.push('priority: low');
+            } else {
+              labels.push('priority: medium');
+            }
+            
+            // Add process labels
+            if (itemType === 'issue') {
+              labels.push('needs-triage');
+            } else {
+              labels.push('needs-review');
+            }
+            
+            // Remove duplicates and apply labels
+            const uniqueLabels = [...new Set(labels)];
+            
+            if (uniqueLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: item.number,
+                labels: uniqueLabels
+              });
+              
+              console.log(`Applied labels to ${itemType} #${item.number}: ${uniqueLabels.join(', ')}`);
+            }

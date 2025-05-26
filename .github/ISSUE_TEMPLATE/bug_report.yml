@@ -1,0 +1,131 @@
+name: 🐛 Bug Report
+description: Create a report to help us improve the US Stock CSV Downloader
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+assignees:
+  - jkabutaro
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the following information to help us resolve the issue quickly.
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: 🐛 Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: 📋 Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Run command '...'
+        2. Enter parameters '...'
+        3. See error
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: ✅ Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+      placeholder: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: ❌ Actual Behavior
+      description: A clear and concise description of what actually happened.
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-output
+    attributes:
+      label: 🔍 Error Output
+      description: Please copy and paste any relevant error messages or log output.
+      placeholder: Paste error messages here...
+      render: shell
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 💻 Operating System
+      description: What operating system are you using?
+      options:
+        - Windows 10
+        - Windows 11
+        - Windows Server 2019
+        - Windows Server 2022
+        - Other (please specify in additional context)
+    validations:
+      required: true
+
+  - type: input
+    id: dotnet-version
+    attributes:
+      label: 🔧 .NET Version
+      description: What version of .NET are you using?
+      placeholder: e.g., 9.0.5
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: 📦 Application Version
+      description: What version of US Stock CSV Downloader are you using?
+      placeholder: e.g., v1.0.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symbols-affected
+    attributes:
+      label: 📈 Symbol Type Affected
+      description: What type of symbols were you trying to download when the bug occurred?
+      multiple: true
+      options:
+        - S&P 500
+        - Dow Jones
+        - Individual symbols
+        - Buffett portfolio
+        - SBI Securities
+        - Major indices
+        - Custom symbol list
+        - Not applicable
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 📝 Additional Context
+      description: Add any other context about the problem here.
+      placeholder: Any additional information that might help us understand the issue...
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: ✅ Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have provided all the requested information above
+          required: true
+        - label: I understand this is an open source project and responses may take time
+          required: true
