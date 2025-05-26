@@ -1,0 +1,104 @@
+name: ❓ Question or Help
+description: Ask a question about using the US Stock CSV Downloader
+title: "[QUESTION] "
+labels: ["question", "needs-triage"]
+assignees:
+  - jkabutaro
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        👋 Welcome! Please ask your question below. Before submitting, please check:
+        - [README.md](https://github.com/jkabutaro/usstock-csvdownloader/blob/main/README.md) for usage instructions
+        - [DEVELOPMENT.md](https://github.com/jkabutaro/usstock-csvdownloader/blob/main/DEVELOPMENT.md) for development info
+        - [Existing issues](https://github.com/jkabutaro/usstock-csvdownloader/issues) for similar questions
+
+  - type: textarea
+    id: question
+    attributes:
+      label: ❓ Your Question
+      description: What would you like to know?
+      placeholder: Please describe your question in detail...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: question-category
+    attributes:
+      label: 📂 Question Category
+      description: What category does your question fall into?
+      options:
+        - Installation and Setup
+        - Usage and Commands
+        - Configuration
+        - Data Sources and Symbols
+        - Output and File Formats
+        - Performance and Optimization
+        - Troubleshooting
+        - Development and Contributing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-tried
+    attributes:
+      label: 🔍 What Have You Tried?
+      description: What steps have you already taken to solve this?
+      placeholder: Describe what you've already attempted...
+
+  - type: textarea
+    id: expected-outcome
+    attributes:
+      label: 🎯 Expected Outcome
+      description: What are you trying to achieve?
+      placeholder: Describe what you're hoping to accomplish...
+
+  - type: textarea
+    id: current-situation
+    attributes:
+      label: 📋 Current Situation
+      description: What's your current setup or what's happening now?
+      placeholder: Describe your current situation, commands you're using, etc.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 💻 Operating System
+      description: What operating system are you using?
+      options:
+        - Windows 10
+        - Windows 11
+        - Windows Server 2019
+        - Windows Server 2022
+        - Other (please specify below)
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: 📦 Application Version
+      description: What version of US Stock CSV Downloader are you using?
+      placeholder: e.g., v1.0.1
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 📝 Additional Context
+      description: Add any other context, error messages, or screenshots that might help.
+      placeholder: Any additional information that might help answer your question...
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: ✅ Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues and documentation for an answer to my question
+          required: true
+        - label: I have provided enough context for others to understand my question
+          required: true
+        - label: I understand this is an open source project and responses may take time
+          required: true
